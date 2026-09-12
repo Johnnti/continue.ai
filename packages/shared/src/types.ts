@@ -11,6 +11,7 @@ export interface ActivityInteraction {
 
 export interface ActivityEvent {
   timestamp: string;
+  idleSeconds?: number;
   appName?: string;
   windowTitle?: string;
   text?: string;
@@ -77,3 +78,50 @@ export type ContinueState =
   | "returning"
   | "briefing"
   | "resuming";
+
+export type CheckpointTrigger = "automatic" | "manual" | "automaticAndManual";
+
+export interface TrackingSchedulePolicy {
+  isEnabled: boolean;
+  startHour: number;
+  endHour: number;
+}
+
+export interface ActivityTrackingPolicy {
+  captureEnabled: boolean;
+  summariesEnabled: boolean;
+  checkpointTrigger: CheckpointTrigger;
+  idleThresholdMinutes: number;
+  observationWindowMinutes: number;
+  schedule: TrackingSchedulePolicy;
+  excludedApplications: string[];
+  checkpointRetentionDays: number;
+  screenpipeRetentionDays: number;
+}
+
+export type RuntimePhase = "observing" | "away" | "returning";
+export type RuntimeCaptureStatus = "recording" | "paused" | "unavailable";
+
+export interface RuntimeStatusRecord {
+  phase: RuntimePhase;
+  captureStatus: RuntimeCaptureStatus;
+  statusMessage: string;
+  lastActivityAt: string | null;
+  heartbeatAt: string;
+}
+
+export const DEFAULT_ACTIVITY_TRACKING_POLICY: ActivityTrackingPolicy = {
+  captureEnabled: true,
+  summariesEnabled: true,
+  checkpointTrigger: "automaticAndManual",
+  idleThresholdMinutes: 4,
+  observationWindowMinutes: 30,
+  schedule: {
+    isEnabled: false,
+    startHour: 9,
+    endHour: 17
+  },
+  excludedApplications: [],
+  checkpointRetentionDays: 7,
+  screenpipeRetentionDays: 0
+};

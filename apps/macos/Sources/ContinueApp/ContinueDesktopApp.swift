@@ -9,9 +9,7 @@ struct ContinueDesktopApp: App {
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
         let configuration = ContinueIntegrationConfiguration()
-        let runtimeProvider = SQLiteRuntimeProvider(
-            databaseURL: configuration.memoryDatabaseURL
-        )
+        let runtimeProvider = BackendRuntimeProvider(baseURL: configuration.backendURL)
         let checkpointProvider = SQLiteCheckpointProvider(
             databaseURL: configuration.memoryDatabaseURL
         )

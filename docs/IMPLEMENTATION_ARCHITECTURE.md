@@ -2,6 +2,14 @@
 
 > **Current product contract:** [`PRODUCT_DECISIONS.md`](PRODUCT_DECISIONS.md) records the decisions made after the user-flow review. It is authoritative where older wording in this research document describes automatic voice playback, default workspace restoration, a different away threshold, or a different retention default.
 
+> **Implemented runtime as of September 12, 2026:** the verified developer
+> build uses `packages/screenpipe` to launch the repository's native macOS
+> capture helper and uses shared SQLite tables to coordinate that TypeScript
+> worker with the Swift app. Sections that specify the upstream Screenpipe HTTP
+> daemon describe the intended future adapter, not the code path currently run
+> by `pnpm dev:worker`. See the README architecture diagram and the current
+> verification status in `PRODUCT_DECISIONS.md` for the implemented path.
+
 ## 1. Executive decision
 
 Continue.ai will be implemented as a local-first macOS desktop application that observes activity through Screenpipe, converts a completed work session into a small structured checkpoint, posts a passive return notification, and presents the checkpoint when the person opens Continue. Voice is a manually started two-way conversation. Continue preserves current application state by default and reopens a file or URL only through the optional **Something closed?** review.

@@ -109,6 +109,7 @@ public struct ActivityTrackingPolicy: Equatable, Codable, Sendable {
     public let observationWindowMinutes: Int
     public let schedule: TrackingSchedule
     public let excludedApplications: [String]
+    public let checkpointRetentionDays: Int
     public let screenpipeRetentionDays: Int
 
     public init(
@@ -119,6 +120,7 @@ public struct ActivityTrackingPolicy: Equatable, Codable, Sendable {
         observationWindowMinutes: Int,
         schedule: TrackingSchedule,
         excludedApplications: [String],
+        checkpointRetentionDays: Int,
         screenpipeRetentionDays: Int
     ) {
         self.captureEnabled = captureEnabled
@@ -128,6 +130,7 @@ public struct ActivityTrackingPolicy: Equatable, Codable, Sendable {
         self.observationWindowMinutes = observationWindowMinutes
         self.schedule = schedule
         self.excludedApplications = excludedApplications
+        self.checkpointRetentionDays = checkpointRetentionDays
         self.screenpipeRetentionDays = screenpipeRetentionDays
     }
 
@@ -139,7 +142,45 @@ public struct ActivityTrackingPolicy: Equatable, Codable, Sendable {
         observationWindowMinutes = preferences.observationWindowMinutes
         schedule = preferences.trackingSchedule
         excludedApplications = preferences.excludedApplications
+        checkpointRetentionDays = preferences.checkpointRetentionDays
         screenpipeRetentionDays = preferences.screenpipeRetentionDays
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case captureEnabled
+        case summariesEnabled
+        case checkpointTrigger
+        case idleThresholdMinutes
+        case observationWindowMinutes
+        case schedule
+        case excludedApplications
+        case checkpointRetentionDays
+        case screenpipeRetentionDays
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = ActivityTrackingPolicy(preferences: .previewDefaults)
+        self.init(
+            captureEnabled: try container.decodeIfPresent(Bool.self, forKey: .captureEnabled)
+                ?? defaults.captureEnabled,
+            summariesEnabled: try container.decodeIfPresent(Bool.self, forKey: .summariesEnabled)
+                ?? defaults.summariesEnabled,
+            checkpointTrigger: try container.decodeIfPresent(CheckpointTrigger.self, forKey: .checkpointTrigger)
+                ?? defaults.checkpointTrigger,
+            idleThresholdMinutes: try container.decodeIfPresent(Int.self, forKey: .idleThresholdMinutes)
+                ?? defaults.idleThresholdMinutes,
+            observationWindowMinutes: try container.decodeIfPresent(Int.self, forKey: .observationWindowMinutes)
+                ?? defaults.observationWindowMinutes,
+            schedule: try container.decodeIfPresent(TrackingSchedule.self, forKey: .schedule)
+                ?? defaults.schedule,
+            excludedApplications: try container.decodeIfPresent([String].self, forKey: .excludedApplications)
+                ?? defaults.excludedApplications,
+            checkpointRetentionDays: try container.decodeIfPresent(Int.self, forKey: .checkpointRetentionDays)
+                ?? defaults.checkpointRetentionDays,
+            screenpipeRetentionDays: try container.decodeIfPresent(Int.self, forKey: .screenpipeRetentionDays)
+                ?? defaults.screenpipeRetentionDays
+        )
     }
 }
 

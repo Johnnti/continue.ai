@@ -15,4 +15,6 @@ swift build --package-path "$package_directory" -Xswiftc -warnings-as-errors --p
     corepack pnpm typecheck
     corepack pnpm exec tsc -p apps/macos/ContractVerification/tsconfig.json
     corepack pnpm exec tsx apps/macos/ContractVerification/verify-contracts.ts
+    corepack pnpm verify:database
+    corepack pnpm verify:runtime
 )
