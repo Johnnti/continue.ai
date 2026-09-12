@@ -12,6 +12,14 @@ export const MemoryFactSchema = z.object({
   label: z.string().optional()
 });
 
+export const KeyActivitySchema = z.object({
+  timestamp: z.string().optional(),
+  app: z.string().min(1),
+  action: z.string().min(1),
+  subject: z.string().min(1).optional(),
+  evidence: z.enum(["observed", "inferred"])
+});
+
 export const SessionCheckpointSchema = z.object({
   id: z.string().min(1),
   startedAt: z.string().optional(),
@@ -21,9 +29,11 @@ export const SessionCheckpointSchema = z.object({
   summary: z.string().min(1),
   lastAction: z.string().min(1),
   nextAction: z.string().min(1),
+  keyActivities: z.array(KeyActivitySchema).max(8).optional(),
   resumeTargets: z.array(ResumeTargetSchema),
   confidence: z.number().min(0).max(1),
   sourceWindowMinutes: z.number().int().min(1),
+  sourceEventCount: z.number().int().min(1).optional(),
   tags: z.array(z.string()).default([]),
   facts: z.array(MemoryFactSchema).default([]),
   context: z.array(z.string()).default([]),

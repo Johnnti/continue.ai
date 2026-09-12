@@ -1,0 +1,29 @@
+{
+  "id": "contract-checkpoint-v1",
+  "startedAt": "2026-09-12T09:58:20Z",
+  "endedAt": "2026-09-12T10:28:20Z",
+  "project": "continue.ai",
+  "currentTask": "Integrating Screenpipe with the context engine",
+  "summary": "You were wiring Screenpipe activity into checkpoint generation for continue.ai.",
+  "lastAction": "Reviewing the Screenpipe API and editing the activity integration",
+  "nextAction": "Connect the generated checkpoint to the ElevenLabs voice agent",
+  "resumeTargets": [
+    {
+      "type": "url",
+      "value": "https://docs.screenpi.pe",
+      "label": "Screenpipe docs"
+    },
+    {
+      "type": "url",
+      "value": "https://elevenlabs.io/docs/conversational-ai",
+      "label": "ElevenLabs docs"
+    },
+    {
+      "type": "file",
+      "value": "packages/screenpipe/src/client.ts",
+      "label": "Screenpipe client"
+    }
+  ],
+  "confidence": 0.86,
+  "sourceWindowMinutes": 30
+}
