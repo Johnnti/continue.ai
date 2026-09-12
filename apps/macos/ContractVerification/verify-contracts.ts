@@ -22,6 +22,7 @@ function parseActivityEvents(value: unknown): ActivityEvent[] {
 
   const allowedKeys = new Set([
     "timestamp",
+    "idleSeconds",
     "appName",
     "windowTitle",
     "text",
@@ -50,6 +51,17 @@ function parseActivityEvents(value: unknown): ActivityEvent[] {
       if (event[key] !== undefined && typeof event[key] !== "string") {
         throw new Error(`Activity event ${index}.${key} must be a string`);
       }
+    }
+
+    if (
+      event.idleSeconds !== undefined &&
+      (
+        typeof event.idleSeconds !== "number"
+        || !Number.isFinite(event.idleSeconds)
+        || event.idleSeconds < 0
+      )
+    ) {
+      throw new Error(`Activity event ${index}.idleSeconds must be non-negative`);
     }
 
     if (

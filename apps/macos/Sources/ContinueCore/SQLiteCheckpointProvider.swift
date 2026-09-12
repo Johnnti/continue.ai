@@ -93,7 +93,7 @@ public actor SQLiteCheckpointProvider: CheckpointProviding {
             throw ContinueServiceError.databaseUnavailable(message)
         }
 
-        sqlite3_busy_timeout(database, 1_000)
+        sqlite3_busy_timeout(database, 5_000)
         do {
             try executeSchema(on: database)
             return database

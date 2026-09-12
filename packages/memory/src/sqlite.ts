@@ -39,6 +39,9 @@ async function loadDatabase(databasePath: string): Promise<SqliteDatabase> {
   await fs.mkdir(path.dirname(databasePath), { recursive: true });
   const database = new DatabaseSync(databasePath) as SqliteDatabase;
   database.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL;
+    PRAGMA busy_timeout = 5000;
     CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
       ended_at TEXT NOT NULL,
@@ -91,8 +94,10 @@ function decodeRows(rows: Array<Record<string, unknown>>): SessionMemory[] {
 }
 
 export function createSqliteCheckpointStore(storagePath?: string): CheckpointStore {
-  const databasePathPromise = storagePath
-    ? Promise.resolve(storagePath)
+  const configuredPath = process.env.CONTINUE_MEMORY_DATABASE_PATH?.trim();
+  const selectedPath = storagePath ?? configuredPath;
+  const databasePathPromise = selectedPath
+    ? Promise.resolve(path.resolve(selectedPath))
     : findWorkspaceRoot(process.cwd()).then((rootPath) => path.join(rootPath, "data/memory.sqlite"));
   const databasePromise = databasePathPromise.then(async (databasePath) => {
     const database = await loadDatabase(databasePath);
@@ -122,8 +127,9 @@ export function createSqliteCheckpointStore(storagePath?: string): CheckpointSto
       return row ? (JSON.parse(String(row.memory_json)) as SessionCheckpoint) : null;
     },
     getRecent: async (limit: number) => {
+      if (limit <= 0) return [];
       const database = await databasePromise;
-      const rows = database.prepare("SELECT memory_json FROM memories ORDER BY ended_at DESC, rowid DESC LIMIT ?").all(Math.max(1, limit));
+      const rows = database.prepare("SELECT memory_json FROM memories ORDER BY ended_at DESC, rowid DESC LIMIT ?").all(limit);
       return decodeRows(rows) as SessionCheckpoint[];
     },
     saveMemory,

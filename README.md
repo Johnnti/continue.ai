@@ -1,11 +1,12 @@
 # continue.ai
 
 Continue is a local-first context-resume assistant. The repository contains a
-native macOS client and a separate web harness. The macOS client reads the
-shared SQLite checkpoint database, starts ElevenLabs conversations through the
-official Swift SDK, and presents a voice-first return checkpoint without
-focusing another app, reopening windows, or writing raw screen/audio data to
-Continue's store.
+native macOS client, an activity worker, and a separate web harness. The worker
+starts the native capture helper, detects away and return transitions, and
+writes compact checkpoints to SQLite. The macOS client writes tracking policy
+to the same database, reads worker status and checkpoints, starts ElevenLabs
+conversations through the official Swift SDK, and presents a voice-first return
+checkpoint without focusing another app or reopening windows automatically.
 
 The product decisions are recorded in
 [`docs/PRODUCT_DECISIONS.md`](docs/PRODUCT_DECISIONS.md). The longer research
@@ -20,8 +21,10 @@ Requirements:
 - macOS 14 or later.
 - Swift 6 toolchain (Xcode 16 or the matching Command Line Tools).
 - A Metal-capable Mac for the iridescent waveform renderer.
+- Node.js 24 and pnpm 9 when seeding or generating checkpoints through the
+  TypeScript memory package.
 
-From the repository root, run:
+To open the interface without starting the live worker, run:
 
 ```bash
 apps/macos/scripts/run-app.sh
@@ -32,13 +35,45 @@ embeds the Control Center extension, signs both bundles for local use, opens the
 Continue window, and adds a Continue item to the menu bar. Quit Continue from
 its menu-bar item when you finish using the preview.
 
-The native client uses `PreviewRuntimeProvider` until the live Screenpipe
-coordinator is connected, but its checkpoint and voice boundaries are live:
-`SQLiteCheckpointProvider` reads the shared `data/memory.sqlite` schema,
-`StoredCheckpointResumeProvider` validates targets from that database, and
-`ElevenLabsVoiceProvider` starts the configured public agent or requests a
-short-lived conversation token. If the database has no records, the UI shows
-an empty state instead of silently substituting fixture data.
+The app intentionally shows an empty state when `data/memory.sqlite` has no
+checkpoint. To review the complete interface without starting capture or
+configuring a model, seed one deterministic checkpoint before opening the app:
+
+```bash
+pnpm install
+pnpm seed:demo
+apps/macos/scripts/run-app.sh
+```
+
+To exercise live activity tracking, run the worker and app from the repository
+root in two terminals. The worker remains active and the app remains a native,
+independently restartable process:
+
+```bash
+# Terminal 1
+pnpm install
+pnpm dev:worker
+```
+
+```bash
+# Terminal 2
+apps/macos/scripts/run-app.sh
+```
+
+macOS requests Screen Recording and Accessibility access when the worker starts
+the capture helper. Approve those permissions for the process shown by macOS,
+then restart `pnpm dev:worker`. `OPENAI_API_KEY` must be set in `.env` before a
+live away episode can be summarized. The app can still open without the worker;
+it reports that the activity-worker heartbeat is unavailable.
+
+The native client uses `SQLiteRuntimeProvider` and
+`SQLiteCheckpointProvider`. `AppModel` persists the saved tracking policy when
+monitoring starts, the worker applies it on its next capture cycle, and both
+processes coordinate through `data/memory.sqlite`. The checkpoint provider
+shows an empty state when no record exists instead of substituting fixture
+data. `StoredCheckpointResumeProvider` validates targets from the database,
+and `ElevenLabsVoiceProvider` starts the configured public agent or requests a
+short-lived conversation token.
 
 Useful native commands:
 
@@ -51,6 +86,12 @@ apps/macos/scripts/run-app.sh --no-open
 
 # Run the deterministic core checks (26 checks at the time of writing).
 swift run --package-path apps/macos ContinueCoreChecks
+
+# Write through TypeScript and read the same temporary database through Swift.
+pnpm verify:database
+
+# Verify policy behavior, worker transitions, and the bidirectional Swift/TypeScript bridge.
+pnpm verify:runtime
 
 # Run Swift checks, build with warnings-as-errors, then run workspace checks.
 apps/macos/scripts/check.sh
@@ -85,8 +126,9 @@ restored the next time Continue opens. The preview exposes:
 - **Excluded applications** that are trimmed, deduplicated case-insensitively,
   and skipped when summaries are created.
 - **Checkpoint retention** of 1, 7, or 30 days for interpreted summaries.
-- **Screenpipe raw-data retention**, where **Screenpipe manages** is the
-  default; Continue keeps only its own interpreted checkpoints.
+- **Screenpipe raw-data retention** is stored as a forward-compatible policy.
+  The current streaming helper does not persist raw frames, so there is no
+  local raw-capture history for Continue to prune in this build.
 - **Voice conversations** enabled or disabled separately from capture.
 
 Older saved payloads are decoded with conservative defaults for any preference
@@ -94,12 +136,23 @@ that does not exist yet, so upgrades do not reset the controls a person set.
 
 ## Live integrations
 
-The native app reads the same SQLite database used by the TypeScript memory
-package. Set `CONTINUE_MEMORY_DATABASE_PATH` when the database is outside the
-repository; the preview script automatically points the app at
-`data/memory.sqlite`. The native adapter creates the compatible `memories`
-table when the database is new and reads only compact interpreted checkpoint
-JSON, never raw Screenpipe frames or microphone audio.
+The native app and TypeScript worker use the same SQLite database. Set
+`CONTINUE_MEMORY_DATABASE_PATH` when the database is outside the repository;
+the preview script automatically points the app at `data/memory.sqlite`. The
+database contains compact checkpoints plus three coordination tables:
+`runtime_policy` for saved settings, `runtime_commands` for one-time actions
+such as **I'm stepping away**, and `runtime_state` for the worker heartbeat and
+current phase. WAL (write-ahead logging) and a five-second busy timeout allow
+the worker to write while the app reads.
+
+`pnpm verify:database` creates an isolated temporary database, writes a
+canonical checkpoint through `createSqliteCheckpointStore`, and starts the
+Swift check executable in a second process. The check confirms that
+`SQLiteCheckpointProvider` reads the same checkpoint, ordering, and resume
+target while the TypeScript connection remains open. `pnpm verify:runtime`
+adds deterministic schedule, exclusion, idle, retry, and retention checks. It
+also verifies Swift policy/command writes in TypeScript and TypeScript state
+writes in Swift.
 
 Voice uses the pinned ElevenLabs Conversational AI Swift SDK (`3.3.1`). A
 public agent can connect with `CONTINUE_ELEVENLABS_AGENT_ID` (the existing
@@ -169,11 +222,10 @@ whole desktop when it contains unrelated personal or collaborator content.
 
 ## Architecture
 
-The native preview keeps the SwiftUI composition layer separate from service
+The native client keeps the SwiftUI composition layer separate from service
 implementations. `AppModel` runs on the main actor, owns view state, and sends
-user intents through narrow protocols. The preview adapters implement those
-same protocols with deterministic data so the UI can be tested before live
-Screenpipe, model, voice, persistence, and resume integrations land.
+user intents through narrow protocols. SQLite is the process boundary between
+the Swift app and the TypeScript activity worker.
 
 ```mermaid
 flowchart TD
@@ -196,30 +248,35 @@ flowchart TD
     Model --> Notify["ReturnNotifying"]
 
     subgraph Adapters["Native adapters"]
-        PreviewRuntime["PreviewRuntimeProvider<br/>Screenpipe pending"]
+        SQLiteRuntime["SQLiteRuntimeProvider<br/>policy · commands · status"]
         SQLiteCheckpoints["SQLiteCheckpointProvider"]
         ElevenLabsVoice["ElevenLabsVoiceProvider"]
         StoredResume["StoredCheckpointResumeProvider"]
         SystemNotify["SystemReturnNotifier"]
     end
 
-    Runtime -. implements .-> PreviewRuntime
+    Runtime -. implements .-> SQLiteRuntime
     Checkpoints -. implements .-> SQLiteCheckpoints
     Voice -. implements .-> ElevenLabsVoice
     Resume -. implements .-> StoredResume
     Notify -. implements .-> SystemNotify
 
-    Screenpipe["Screenpipe local API<br/>live coordinator pending"] -. bounded observations .-> Runtime
-    Store["SQLite memory.sqlite"] -. validated records .-> Checkpoints
+    Capture["Native macOS capture helper<br/>screen + app context + idle seconds"] --> Worker["TypeScript activity worker<br/>schedule · away/return · exclusions"]
+    Worker --> Context["Context engine<br/>one checkpoint per away episode"]
+    Context --> Store[("SQLite memory.sqlite")]
+    SQLiteRuntime <--> Store
+    SQLiteCheckpoints --> Store
     VoiceSDK["ElevenLabs Swift SDK"] -. session state + levels .-> Voice
     Workspace["Approved workspace opener<br/>pending"] -. selected targets only .-> Resume
 ```
 
 The boundaries enforce these rules:
 
-- Screenpipe remains the source of captured activity; Continue consumes bounded
-  observations and stores interpreted checkpoint records, not raw screenshots
-  or microphone audio.
+- The current `@continue/screenpipe` adapter streams bounded observations from
+  the native macOS helper. The helper reports seconds since any user input; it
+  does not inspect or store individual keystrokes.
+- The worker keeps only the configured in-memory observation window and stores
+  interpreted checkpoint records, not raw screenshots or microphone audio.
 - The runtime coordinator decides whether the user is away or returning;
   views do not infer that state independently.
 - Voice starts only after an explicit user action and exposes connecting,
@@ -230,11 +287,15 @@ The boundaries enforce these rules:
 
 ## Web harness and worker
 
-Install the workspace dependencies before using the web commands:
+Install the workspace dependencies first. The web harness is optional. The
+capture worker is required for live native runtime status and new checkpoints:
 
 ```bash
 pnpm install
 pnpm dev:web
+```
+
+```bash
 pnpm dev:worker
 ```
 

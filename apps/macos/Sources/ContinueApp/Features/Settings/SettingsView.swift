@@ -39,7 +39,7 @@ struct SettingsView: View {
     private var captureSection: some View {
         SettingsSection(
             title: "Activity context",
-            subtitle: "Screenpipe records local activity while enabled. Continue checks that local service periodically and creates summaries separately.",
+            subtitle: "Screenpipe records local activity while enabled. Continue creates summaries only at an away checkpoint.",
             systemImage: "rectangle.on.rectangle"
         ) {
             Toggle(
@@ -220,7 +220,7 @@ struct SettingsView: View {
     private var privacySection: some View {
         SettingsSection(
             title: "Privacy",
-            subtitle: "Checkpoint retention applies to interpreted summaries only. Screenpipe controls its own raw-data retention.",
+            subtitle: "Checkpoint retention applies to interpreted summaries. The current streaming helper does not retain raw frames.",
             systemImage: "lock.shield"
         ) {
             Picker(
@@ -249,10 +249,11 @@ struct SettingsView: View {
                 Text("7 days").tag(7)
                 Text("30 days").tag(30)
             }
+            .disabled(true)
             .accessibilityIdentifier("settings.screenpipe-retention")
 
             Label(
-                "Continue never copies raw screen or audio data into its own store.",
+                "Raw-retention choices are reserved for a future persistent Screenpipe adapter. Continue currently stores no raw screen or audio data.",
                 systemImage: "info.circle"
             )
             .font(.caption)
