@@ -28,6 +28,7 @@ struct ContinueDesktopApp: App {
         }
         .defaultSize(width: 960, height: 640)
         .windowStyle(.hiddenTitleBar)
+        .handlesExternalEvents(matching: ["continue://conversation"])
 
         Settings {
             SettingsView(model: model)

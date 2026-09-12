@@ -1,0 +1,65 @@
+name: ContinueMac
+
+options:
+  minimumXcodeGenVersion: 2.46.0
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "26.0"
+
+packages:
+  ContinueMacPackage:
+    path: .
+
+targets:
+  Continue:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/ContinueApp
+    dependencies:
+      - package: ContinueMacPackage
+        product: ContinueCore
+      - target: ContinueControlExtension
+        embed: true
+    info:
+      path: Configuration/ContinueApp-Info.plist
+      properties:
+        CFBundleDisplayName: Continue
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Viewer
+            CFBundleURLName: ai.continue.desktop
+            CFBundleURLSchemes:
+              - continue
+        LSApplicationCategoryType: public.app-category.productivity
+        LSUIElement: true
+        NSHighResolutionCapable: true
+        NSMicrophoneUsageDescription: Continue uses the microphone only after you start a voice conversation.
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        PRODUCT_BUNDLE_IDENTIFIER: ai.continue.desktop
+        PRODUCT_NAME: Continue
+        SWIFT_VERSION: 6.0
+    scheme:
+      gatherCoverageData: false
+
+  ContinueControlExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Sources/ContinueControlExtension
+    info:
+      path: Configuration/ContinueControl-Info.plist
+      properties:
+        CFBundleDisplayName: Continue Control
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        APPLICATION_EXTENSION_API_ONLY: true
+        CODE_SIGN_ENTITLEMENTS: Configuration/ContinueControl.entitlements
+        CODE_SIGN_STYLE: Automatic
+        PRODUCT_BUNDLE_IDENTIFIER: ai.continue.desktop.control
+        PRODUCT_NAME: ContinueControlExtension
+        SKIP_INSTALL: true
+        SWIFT_VERSION: 6.0

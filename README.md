@@ -22,12 +22,13 @@ Requirements:
 From the repository root, run:
 
 ```bash
-swift run --package-path apps/macos ContinueApp
+apps/macos/scripts/run-app.sh
 ```
 
-The command builds the Swift package, opens the Continue window, and adds a
-Continue item to the menu bar. Keep the terminal process running while using
-the preview; press `Control-C` to stop it.
+The script builds a local `ContinuePreview.app` in the macOS user cache,
+embeds the Control Center extension, signs both bundles for local use, opens the
+Continue window, and adds a Continue item to the menu bar. Quit Continue from
+its menu-bar item when you finish using the preview.
 
 The current native client is intentionally fixture-backed. `ContinueDesktopApp`
 injects `PreviewRuntimeProvider`, `PreviewCheckpointProvider`,
@@ -40,6 +41,9 @@ Useful native commands:
 ```bash
 # Compile only the desktop executable.
 swift build --package-path apps/macos --product ContinueApp
+
+# Build and validate the Control Center extension without opening the app.
+apps/macos/scripts/run-app.sh --no-open
 
 # Run the deterministic core checks (17 checks at the time of writing).
 swift run --package-path apps/macos ContinueCoreChecks
@@ -58,6 +62,38 @@ To open the package in Xcode for previews or signing work:
 ```bash
 open apps/macos/Package.swift
 ```
+
+## Add the Control Center button
+
+On macOS 26 or later, Continue supplies an **Open Continue** control with the
+waveform icon. The button opens the app directly on the current conversation
+and checkpoint. It does not start recording, generate a summary, or resume
+another application.
+
+The checked-in bundle script compiles, embeds, and registers the extension for
+structural verification with the Command Line Tools. The system gallery accepts
+an Apple development-signed extension whose App Intents metadata was extracted
+by full Xcode. The ad-hoc command-line preview therefore does not appear in the
+gallery. To add the button:
+
+1. Open `apps/macos/ContinueMac.xcodeproj` with Xcode 26 or later.
+2. Select the same Apple development team for **Continue** and
+   **ContinueControlExtension**.
+3. Run the **Continue** scheme once.
+4. Open macOS Control Center and choose **Edit Controls**.
+5. Search for **Continue**, then add **Open Continue** to Control Center or the
+   menu bar.
+
+The generated project is defined by `apps/macos/project.yml`. After changing
+that file, regenerate the project with:
+
+```bash
+brew install xcodegen
+apps/macos/scripts/generate-xcode-project.sh
+```
+
+macOS 14 and macOS 15 can still run the main app and menu-bar item, but those
+releases do not support third-party Control Center controls.
 
 ## Review the UI
 
@@ -91,6 +127,8 @@ Screenpipe, model, voice, persistence, and resume integrations land.
 ```mermaid
 flowchart TD
     App["ContinueDesktopApp<br/>SwiftUI scenes"] --> Shell["AppShellView<br/>NavigationSplitView"]
+    Control["ContinueControlExtension<br/>macOS 26 ControlWidget"] --> URL["continue://conversation"]
+    URL --> App
     Shell --> Sidebar["CheckpointSidebar<br/>Conversation · history · Settings"]
     Shell --> Now["NowView<br/>status · waveform · checkpoint"]
     Shell --> Settings["SettingsView<br/>local policies"]

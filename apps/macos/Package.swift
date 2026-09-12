@@ -10,6 +10,7 @@ let package = Package(
     products: [
         .library(name: "ContinueCore", targets: ["ContinueCore"]),
         .executable(name: "ContinueApp", targets: ["ContinueApp"]),
+        .executable(name: "ContinueControlExtension", targets: ["ContinueControlExtension"]),
         .executable(name: "ContinueCoreChecks", targets: ["ContinueCoreChecks"])
     ],
     targets: [
@@ -24,6 +25,10 @@ let package = Package(
             name: "ContinueApp",
             dependencies: ["ContinueCore"],
             path: "Sources/ContinueApp"
+        ),
+        .executableTarget(
+            name: "ContinueControlExtension",
+            path: "Sources/ContinueControlExtension"
         ),
         .executableTarget(
             name: "ContinueCoreChecks",
