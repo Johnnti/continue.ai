@@ -91,6 +91,7 @@ public struct ResumeTarget: Codable, Equatable, Identifiable, Sendable {
 
 public struct Checkpoint: Codable, Equatable, Identifiable, Sendable {
     public let id: String
+    public let project: String?
     public let createdAt: Date
     public let awayDurationMinutes: Int
     public let headline: String
@@ -103,6 +104,7 @@ public struct Checkpoint: Codable, Equatable, Identifiable, Sendable {
 
     public init(
         id: String,
+        project: String? = nil,
         createdAt: Date,
         awayDurationMinutes: Int,
         headline: String,
@@ -114,6 +116,7 @@ public struct Checkpoint: Codable, Equatable, Identifiable, Sendable {
         resumeTargets: [ResumeTarget]
     ) {
         self.id = id
+        self.project = project
         self.createdAt = createdAt
         self.awayDurationMinutes = awayDurationMinutes
         self.headline = headline
@@ -128,6 +131,7 @@ public struct Checkpoint: Codable, Equatable, Identifiable, Sendable {
     public func replacingNextSteps(with nextSteps: [String]) -> Checkpoint {
         Checkpoint(
             id: id,
+            project: project,
             createdAt: createdAt,
             awayDurationMinutes: awayDurationMinutes,
             headline: headline,

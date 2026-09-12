@@ -8,15 +8,26 @@ struct ContinueDesktopApp: App {
 
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
+        let configuration = ContinueIntegrationConfiguration()
         let runtimeProvider = PreviewRuntimeProvider()
+        let checkpointProvider = SQLiteCheckpointProvider(
+            databaseURL: configuration.memoryDatabaseURL
+        )
+        let voiceProvider = ElevenLabsVoiceProvider(
+            configuration: configuration,
+            checkpointProvider: checkpointProvider
+        )
         _model = StateObject(
             wrappedValue: AppModel(
                 runtimeProvider: runtimeProvider,
                 runtimeController: runtimeProvider,
-                checkpointProvider: PreviewCheckpointProvider(),
-                voiceProvider: PreviewVoiceProvider(),
-                resumeProvider: PreviewResumeProvider(),
-                returnNotifier: SystemReturnNotifier()
+                checkpointProvider: checkpointProvider,
+                voiceProvider: voiceProvider,
+                resumeProvider: StoredCheckpointResumeProvider(
+                    checkpointProvider: checkpointProvider
+                ),
+                returnNotifier: SystemReturnNotifier(),
+                dataSourceLabel: "LIVE DATABASE + VOICE"
             )
         )
     }
@@ -28,6 +39,7 @@ struct ContinueDesktopApp: App {
         }
         .defaultSize(width: 960, height: 640)
         .windowStyle(.hiddenTitleBar)
+        .handlesExternalEvents(matching: ["continue://conversation"])
 
         Settings {
             SettingsView(model: model)

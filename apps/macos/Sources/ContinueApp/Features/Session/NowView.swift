@@ -73,7 +73,7 @@ struct NowView: View {
 
             Spacer()
 
-            Text("PREVIEW DATA")
+             Text(model.dataSourceLabel)
                 .font(.caption2.weight(.semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)

@@ -78,6 +78,7 @@ public enum PreviewContent {
 
 public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling {
     private var currentSnapshot: RuntimeSnapshot
+    private var trackingPolicy = ActivityTrackingPolicy(preferences: .previewDefaults)
 
     public init(snapshot: RuntimeSnapshot = PreviewContent.runtimeSnapshot) {
         currentSnapshot = snapshot
@@ -88,6 +89,8 @@ public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling {
     }
 
     public func markSteppingAway() async {
+        guard trackingPolicy.captureEnabled, trackingPolicy.summariesEnabled else { return }
+
         currentSnapshot = RuntimeSnapshot(
             phase: .away,
             captureStatus: currentSnapshot.captureStatus,
@@ -96,7 +99,40 @@ public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling {
         )
     }
 
+    public func setCaptureEnabled(_ isEnabled: Bool) async {
+        trackingPolicy = ActivityTrackingPolicy(
+            captureEnabled: isEnabled,
+            summariesEnabled: trackingPolicy.summariesEnabled,
+            checkpointTrigger: trackingPolicy.checkpointTrigger,
+            idleThresholdMinutes: trackingPolicy.idleThresholdMinutes,
+            observationWindowMinutes: trackingPolicy.observationWindowMinutes,
+            schedule: trackingPolicy.schedule,
+            excludedApplications: trackingPolicy.excludedApplications,
+            screenpipeRetentionDays: trackingPolicy.screenpipeRetentionDays
+        )
+
+        currentSnapshot = RuntimeSnapshot(
+            phase: isEnabled ? currentSnapshot.phase : .observing,
+            captureStatus: isEnabled ? .recording : .paused,
+            statusMessage: isEnabled
+                ? "Screenpipe recording resumed"
+                : "Screenpipe recording paused",
+            lastActivityAt: currentSnapshot.lastActivityAt
+        )
+    }
+
     public func setSummariesEnabled(_ isEnabled: Bool) async {
+        trackingPolicy = ActivityTrackingPolicy(
+            captureEnabled: trackingPolicy.captureEnabled,
+            summariesEnabled: isEnabled,
+            checkpointTrigger: trackingPolicy.checkpointTrigger,
+            idleThresholdMinutes: trackingPolicy.idleThresholdMinutes,
+            observationWindowMinutes: trackingPolicy.observationWindowMinutes,
+            schedule: trackingPolicy.schedule,
+            excludedApplications: trackingPolicy.excludedApplications,
+            screenpipeRetentionDays: trackingPolicy.screenpipeRetentionDays
+        )
+
         currentSnapshot = RuntimeSnapshot(
             phase: isEnabled ? currentSnapshot.phase : .observing,
             captureStatus: currentSnapshot.captureStatus,
@@ -105,6 +141,39 @@ public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling {
                 : "Continue summaries paused \u{00B7} Screenpipe is still recording",
             lastActivityAt: currentSnapshot.lastActivityAt
         )
+    }
+
+    public func updateTrackingPolicy(_ policy: ActivityTrackingPolicy) async {
+        trackingPolicy = policy
+
+        let captureStatus: CaptureStatus = policy.captureEnabled ? .recording : .paused
+        let phase: RuntimePhase = policy.captureEnabled && policy.summariesEnabled
+            ? currentSnapshot.phase
+            : .observing
+
+        currentSnapshot = RuntimeSnapshot(
+            phase: phase,
+            captureStatus: captureStatus,
+            statusMessage: statusMessage(for: policy),
+            lastActivityAt: currentSnapshot.lastActivityAt
+        )
+    }
+
+    public func currentTrackingPolicy() -> ActivityTrackingPolicy {
+        trackingPolicy
+    }
+
+    private func statusMessage(for policy: ActivityTrackingPolicy) -> String {
+        if !policy.captureEnabled {
+            return "Screenpipe recording paused"
+        }
+        if !policy.summariesEnabled {
+            return "Continue summaries paused \u{00B7} Screenpipe is still recording"
+        }
+        if policy.schedule.isEnabled {
+            return "Screenpipe recording \u{00B7} Continue summaries \(policy.schedule.displayRange)"
+        }
+        return "Screenpipe recording \u{00B7} Continue summaries enabled"
     }
 }
 
@@ -134,6 +203,7 @@ public actor PreviewVoiceProvider: VoiceProviding {
         state: .disconnected,
         levels: Array(repeating: 0.08, count: 16)
     )
+    private var resumeRequestHandler: ResumeRequestHandler?
 
     public init() {}
 
@@ -153,6 +223,10 @@ public actor PreviewVoiceProvider: VoiceProviding {
             state: .disconnected,
             levels: Array(repeating: 0.08, count: 16)
         )
+    }
+
+    public func setResumeRequestHandler(_ handler: ResumeRequestHandler?) async {
+        resumeRequestHandler = handler
     }
 }
 
