@@ -1,0 +1,19 @@
+{
+  "name": "continue-ai",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@9.12.3",
+  "scripts": {
+    "dev": "pnpm --filter @continue/web dev",
+    "dev:web": "pnpm --filter @continue/web dev",
+    "dev:worker": "pnpm --filter @continue/worker dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "seed:demo": "pnpm tsx scripts/seed-demo.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.2"
+  }
+}

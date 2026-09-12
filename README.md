@@ -1,2 +1,24 @@
 # continue.ai
-Continue.ai is an AI agent that keeps track of desktop activity and provides a brief voice and text summary of your previous work after taking short and long breaks from your device
+
+Local-first context resume assistant scaffold.
+
+## Quick start
+
+```bash
+pnpm install
+pnpm dev:web
+```
+
+Worker process:
+
+```bash
+pnpm dev:worker
+```
+
+Optional demo seed:
+
+```bash
+pnpm seed:demo
+```
+
+The app works without API keys and uses mock Screenpipe/context/voice integrations by default.
