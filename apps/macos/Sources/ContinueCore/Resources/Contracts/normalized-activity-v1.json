@@ -1,0 +1,23 @@
+[
+  {
+    "timestamp": "2026-09-12T10:03:20Z",
+    "appName": "Visual Studio Code",
+    "windowTitle": "packages/screenpipe/src/activity.ts",
+    "filePath": "/home/user/continue.ai/packages/screenpipe/src/activity.ts",
+    "durationSeconds": 420
+  },
+  {
+    "timestamp": "2026-09-12T10:10:20Z",
+    "appName": "Google Chrome",
+    "windowTitle": "Screenpipe API docs",
+    "url": "https://docs.screenpi.pe",
+    "durationSeconds": 300
+  },
+  {
+    "timestamp": "2026-09-12T10:18:20Z",
+    "appName": "Google Chrome",
+    "windowTitle": "ElevenLabs Conversational AI",
+    "url": "https://elevenlabs.io/docs/conversational-ai",
+    "durationSeconds": 240
+  }
+]

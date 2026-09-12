@@ -18,7 +18,7 @@ struct ContinueCoreChecks {
         try checkpointContractRoundTripsThroughJSON()
         try await checkpointProviderReturnsNewestFirst()
         try await checkpointProviderHonorsZeroLimit()
-        try await voiceProviderMovesBetweenSpeakingAndDisconnected()
+        try await voiceProviderMovesBetweenListeningAndDisconnected()
         try await resumeProviderOnlyReturnsSelectedTargets()
         try waveformMathUsesStableSilenceFloor()
         try waveformMathClampsInputLevels()
@@ -26,8 +26,14 @@ struct ContinueCoreChecks {
         try await resumeProviderRejectsUnknownCheckpoints()
         try previewPreferencesExposeConservativeDefaults()
         try await resumeProviderRejectsUnknownTargetIdentifiers()
+        try canonicalCheckpointFixtureDecodesAndMaps()
+        try normalizedActivityFixtureDecodesChronologically()
+        try canonicalResumeTargetsRetainLocators()
+        try await runtimeControllerMarksManualAwayWithoutStoppingCapture()
+        try checkpointNextStepCanBeCorrectedWithoutChangingEvidence()
+        try returnNotificationRequiresOneEnabledAwayToReturnTransition()
 
-        print("ContinueCoreChecks: 11 checks passed")
+        print("ContinueCoreChecks: 17 checks passed")
     }
 
     private static func checkpointContractRoundTripsThroughJSON() throws {
@@ -64,18 +70,18 @@ struct ContinueCoreChecks {
         try expect(history.isEmpty, "A zero history limit must return no checkpoints")
     }
 
-    private static func voiceProviderMovesBetweenSpeakingAndDisconnected() async throws {
+    private static func voiceProviderMovesBetweenListeningAndDisconnected() async throws {
         let provider = PreviewVoiceProvider()
 
         try await provider.start(briefing: "Welcome back")
-        let speaking = await provider.snapshot()
+        let listening = await provider.snapshot()
         await provider.stop()
         let stopped = await provider.snapshot()
 
-        try expect(speaking.state == .speaking, "Voice provider must enter speaking state")
+        try expect(listening.state == .listening, "Voice provider must enter listening state")
         try expect(
-            speaking.levels == PreviewContent.listeningLevels,
-            "Speaking state must expose deterministic fixture levels"
+            listening.levels == PreviewContent.listeningLevels,
+            "Listening state must expose deterministic fixture levels"
         )
         try expect(stopped.state == .disconnected, "Stopping voice must disconnect it")
     }
@@ -114,11 +120,12 @@ struct ContinueCoreChecks {
         var selection = ResumeSelection(targets: targets)
         let originalIDs = selection.selectedIDs
 
+        try expect(originalIDs.isEmpty, "Reopen review must begin with nothing selected")
         selection.toggle("unknown-target")
         try expect(selection.selectedIDs == originalIDs, "Unknown target IDs must be ignored")
 
         selection.toggle(targets[0].id)
-        try expect(!selection.contains(targets[0].id), "Known targets must be individually removable")
+        try expect(selection.contains(targets[0].id), "Known targets must be individually selectable")
     }
 
     private static func resumeProviderRejectsUnknownCheckpoints() async throws {
@@ -136,8 +143,8 @@ struct ContinueCoreChecks {
         let preferences = AppPreferences.previewDefaults
 
         try expect(preferences.interpretationEnabled, "Preview interpretation must be visible by default")
-        try expect(preferences.voiceBriefingsEnabled, "Voice briefing control must start enabled")
-        try expect(preferences.idleThresholdMinutes == 15, "Default idle threshold must be 15 minutes")
+        try expect(preferences.voiceBriefingsEnabled, "Voice conversation control must start enabled")
+        try expect(preferences.idleThresholdMinutes == 4, "Default away threshold must be 4 minutes")
         try expect(preferences.checkpointRetentionDays == 7, "Default checkpoint retention must be 7 days")
     }
 
@@ -153,6 +160,103 @@ struct ContinueCoreChecks {
         } catch ContinueServiceError.invalidResumeTargets {
             return
         }
+    }
+
+    private static func canonicalCheckpointFixtureDecodesAndMaps() throws {
+        let contract = try ContractFixtures.sessionCheckpointV1()
+        let checkpoint = try contract.makeCheckpoint(awayDurationMinutes: 42)
+
+        try expect(contract.project == "continue.ai", "Contract fixture must retain the project")
+        try expect(checkpoint.headline == contract.currentTask, "UI headline must map from currentTask")
+        try expect(checkpoint.completed == [contract.lastAction], "Completed work must map from lastAction")
+        try expect(checkpoint.nextSteps == [contract.nextAction], "Next steps must map from nextAction")
+        try expect(checkpoint.confidence == .high, "Numeric confidence must map to the UI confidence band")
+        try expect(checkpoint.awayDurationMinutes == 42, "Runtime away duration must remain separate from source window")
+    }
+
+    private static func normalizedActivityFixtureDecodesChronologically() throws {
+        let events = try ContractFixtures.normalizedActivityV1()
+        let formatter = ISO8601DateFormatter()
+        let dates = events.compactMap { formatter.date(from: $0.timestamp) }
+
+        try expect(events.count == 3, "Normalized activity fixture must contain three events")
+        try expect(dates.count == events.count, "Every activity event must have an ISO-8601 timestamp")
+        try expect(dates == dates.sorted(), "Normalized activity must be chronological")
+    }
+
+    private static func canonicalResumeTargetsRetainLocators() throws {
+        let contract = try ContractFixtures.sessionCheckpointV1()
+        let checkpoint = try contract.makeCheckpoint(awayDurationMinutes: 42)
+
+        try expect(
+            checkpoint.resumeTargets.map(\.locator) == contract.resumeTargets.map(\.value),
+            "Swift resume targets must retain every canonical locator"
+        )
+        try expect(
+            checkpoint.resumeTargets.map(\.kind) == [.url, .url, .file],
+            "Canonical target types must map to Swift target kinds"
+        )
+    }
+
+    private static func runtimeControllerMarksManualAwayWithoutStoppingCapture() async throws {
+        let provider = PreviewRuntimeProvider()
+
+        await provider.markSteppingAway()
+        let awaySnapshot = await provider.snapshot()
+
+        try expect(awaySnapshot.phase == .away, "Manual away must update the runtime phase")
+        try expect(
+            awaySnapshot.captureStatus == .recording,
+            "Manual away must not stop Screenpipe recording"
+        )
+
+        await provider.setSummariesEnabled(false)
+        let pausedSummarySnapshot = await provider.snapshot()
+
+        try expect(
+            pausedSummarySnapshot.captureStatus == .recording,
+            "Pausing Continue summaries must not stop Screenpipe recording"
+        )
+        try expect(
+            pausedSummarySnapshot.statusMessage.contains("Screenpipe is still recording"),
+            "Paused summary copy must state that Screenpipe still records"
+        )
+    }
+
+    private static func checkpointNextStepCanBeCorrectedWithoutChangingEvidence() throws {
+        let original = PreviewContent.latestCheckpoint
+        let updated = original.replacingNextSteps(with: ["Test the corrected return flow"])
+
+        try expect(updated.nextSteps == ["Test the corrected return flow"], "Next step must be replaceable")
+        try expect(updated.id == original.id, "Editing the next step must retain checkpoint identity")
+        try expect(updated.evidence == original.evidence, "Editing the next step must retain its evidence")
+    }
+
+    private static func returnNotificationRequiresOneEnabledAwayToReturnTransition() throws {
+        try expect(
+            RuntimeTransition.shouldNotifyReturn(
+                previous: .away,
+                current: .returning,
+                summariesEnabled: true
+            ),
+            "An enabled away-to-return transition must produce a return notification"
+        )
+        try expect(
+            !RuntimeTransition.shouldNotifyReturn(
+                previous: .observing,
+                current: .returning,
+                summariesEnabled: true
+            ),
+            "Opening a returning snapshot must not produce a duplicate notification"
+        )
+        try expect(
+            !RuntimeTransition.shouldNotifyReturn(
+                previous: .away,
+                current: .returning,
+                summariesEnabled: false
+            ),
+            "Paused summaries must suppress return notifications"
+        )
     }
 
     private static func expect(

@@ -19,7 +19,7 @@ public struct AppPreferences: Equatable, Sendable {
     public static let previewDefaults = AppPreferences(
         interpretationEnabled: true,
         voiceBriefingsEnabled: true,
-        idleThresholdMinutes: 15,
+        idleThresholdMinutes: 4,
         checkpointRetentionDays: 7
     )
 }

@@ -37,7 +37,7 @@ struct AppShellView: View {
         }
         .navigationTitle(selection?.rawValue ?? "Continue")
         .task {
-            await model.load()
+            model.startMonitoring()
         }
     }
 

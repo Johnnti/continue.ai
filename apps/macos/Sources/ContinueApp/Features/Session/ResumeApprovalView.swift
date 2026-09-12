@@ -26,11 +26,11 @@ struct ResumeApprovalView: View {
                     .foregroundStyle(ContinueTheme.accent)
                     .accessibilityHidden(true)
 
-                Text("Review what Continue will open")
+                Text("Reopen a missing item")
                     .font(.title2.weight(.semibold))
             }
 
-            Text("Select the items that should return. Continue sends only the selected identifiers to the resume service.")
+            Text("Continue cannot tell whether every browser tab or file is still open. Nothing is selected, and nothing opens until you choose an item and confirm.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -105,7 +105,7 @@ struct ResumeApprovalView: View {
 
     private var footer: some View {
         HStack {
-            Label("Explicit approval required", systemImage: "hand.raised")
+            Label("Your current app stays in place", systemImage: "hand.raised")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -124,7 +124,7 @@ struct ResumeApprovalView: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Text("Resume selected")
+                        Text("Open selected")
                     }
                 }
                 .buttonStyle(.borderedProminent)

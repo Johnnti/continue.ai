@@ -9,6 +9,11 @@ public protocol RuntimeProviding: Sendable {
     func snapshot() async -> RuntimeSnapshot
 }
 
+public protocol RuntimeControlling: Sendable {
+    func markSteppingAway() async
+    func setSummariesEnabled(_ isEnabled: Bool) async
+}
+
 public protocol CheckpointProviding: Sendable {
     func latest() async throws -> Checkpoint?
     func history(limit: Int) async throws -> [Checkpoint]

@@ -15,7 +15,10 @@ let package = Package(
     targets: [
         .target(
             name: "ContinueCore",
-            path: "Sources/ContinueCore"
+            path: "Sources/ContinueCore",
+            resources: [
+                .copy("Resources/Contracts")
+            ]
         ),
         .executableTarget(
             name: "ContinueApp",
@@ -25,7 +28,8 @@ let package = Package(
         .executableTarget(
             name: "ContinueCoreChecks",
             dependencies: ["ContinueCore"],
-            path: "Tests/ContinueCoreChecks"
+            path: "Tests/ContinueCoreChecks",
+            sources: ["main.swift"]
         )
     ]
 )

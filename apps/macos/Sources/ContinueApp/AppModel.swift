@@ -28,22 +28,53 @@ final class AppModel: ObservableObject {
     @Published private(set) var resumeErrorMessage: String?
     @Published private(set) var isPreparingResume = false
     @Published private(set) var isResuming = false
+    @Published private(set) var isUpdatingRuntime = false
+    @Published private(set) var notificationAuthorization: ReturnNotificationAuthorization = .checking
+    @Published private(set) var isRequestingNotificationAuthorization = false
 
     private let runtimeProvider: any RuntimeProviding
+    private let runtimeController: any RuntimeControlling
     private let checkpointProvider: any CheckpointProviding
     private let voiceProvider: any VoiceProviding
     private let resumeProvider: any ResumeProviding
+    private let returnNotifier: any ReturnNotifying
+    private var monitoringTask: Task<Void, Never>?
+    private var dismissedCheckpointIDs: Set<String> = []
+    private var checkpointEdits: [String: Checkpoint] = [:]
 
     init(
         runtimeProvider: any RuntimeProviding,
+        runtimeController: any RuntimeControlling,
         checkpointProvider: any CheckpointProviding,
         voiceProvider: any VoiceProviding,
-        resumeProvider: any ResumeProviding
+        resumeProvider: any ResumeProviding,
+        returnNotifier: any ReturnNotifying
     ) {
         self.runtimeProvider = runtimeProvider
+        self.runtimeController = runtimeController
         self.checkpointProvider = checkpointProvider
         self.voiceProvider = voiceProvider
         self.resumeProvider = resumeProvider
+        self.returnNotifier = returnNotifier
+    }
+
+    func startMonitoring() {
+        guard monitoringTask == nil else { return }
+
+        monitoringTask = Task { [weak self] in
+            guard let self else { return }
+            await self.load()
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch {
+                    return
+                }
+
+                await self.refreshRuntime(notifyOnReturn: true)
+            }
+        }
     }
 
     func load() async {
@@ -52,17 +83,25 @@ final class AppModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         historyErrorMessage = nil
-        runtime = await runtimeProvider.snapshot()
+        await refreshRuntime(notifyOnReturn: false)
         voice = await voiceProvider.snapshot()
+        notificationAuthorization = await returnNotifier.authorizationStatus()
 
         do {
-            checkpoint = try await checkpointProvider.latest()
+            if let latest = try await checkpointProvider.latest() {
+                let resolved = checkpointEdits[latest.id] ?? latest
+                checkpoint = dismissedCheckpointIDs.contains(latest.id) ? nil : resolved
+            } else {
+                checkpoint = nil
+            }
         } catch {
             errorMessage = "Continue could not load the latest checkpoint."
         }
 
         do {
-            history = try await checkpointProvider.history(limit: 20)
+            history = try await checkpointProvider.history(limit: 20).map {
+                checkpointEdits[$0.id] ?? $0
+            }
         } catch {
             historyErrorMessage = "Continue could not load checkpoint history."
         }
@@ -76,7 +115,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func startVoiceBriefing() {
+    func startVoiceConversation() {
         guard let checkpoint, !isVoiceTransitioning else { return }
 
         Task {
@@ -85,22 +124,23 @@ final class AppModel: ObservableObject {
             voice = VoiceSnapshot(state: .connecting, levels: voice.levels)
 
             do {
-                let briefing = ([checkpoint.summary] + checkpoint.nextSteps).joined(separator: " ")
-                try await voiceProvider.start(briefing: briefing)
+                let conversationContext = ([checkpoint.summary] + checkpoint.nextSteps)
+                    .joined(separator: " ")
+                try await voiceProvider.start(briefing: conversationContext)
                 voice = await voiceProvider.snapshot()
             } catch {
                 voice = VoiceSnapshot(
-                    state: .failed(message: "Voice briefing could not start."),
+                    state: .failed(message: "Voice conversation could not start."),
                     levels: voice.levels
                 )
-                voiceErrorMessage = "Voice briefing could not start."
+                voiceErrorMessage = "Voice conversation could not start."
             }
 
             isVoiceTransitioning = false
         }
     }
 
-    func stopVoiceBriefing() {
+    func stopVoiceConversation() {
         guard !isVoiceTransitioning else { return }
 
         Task {
@@ -108,6 +148,45 @@ final class AppModel: ObservableObject {
             await voiceProvider.stop()
             voice = await voiceProvider.snapshot()
             isVoiceTransitioning = false
+        }
+    }
+
+    func markSteppingAway() {
+        guard preferences.interpretationEnabled, !isUpdatingRuntime else { return }
+
+        Task {
+            isUpdatingRuntime = true
+            await runtimeController.markSteppingAway()
+            await refreshRuntime(notifyOnReturn: false)
+            isUpdatingRuntime = false
+        }
+    }
+
+    func updateNextStep(_ nextStep: String) {
+        let normalized = nextStep.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let checkpoint, !normalized.isEmpty else { return }
+
+        let updated = checkpoint.replacingNextSteps(with: [normalized])
+        checkpointEdits[updated.id] = updated
+        self.checkpoint = updated
+        history = history.map { $0.id == updated.id ? updated : $0 }
+    }
+
+    func dismissCheckpoint() {
+        guard let checkpoint else { return }
+        dismissedCheckpointIDs.insert(checkpoint.id)
+        self.checkpoint = nil
+        stopVoiceConversation()
+    }
+
+    func requestNotificationAuthorization() {
+        guard !isRequestingNotificationAuthorization else { return }
+
+        Task {
+            isRequestingNotificationAuthorization = true
+            _ = await returnNotifier.requestAuthorization()
+            notificationAuthorization = await returnNotifier.authorizationStatus()
+            isRequestingNotificationAuthorization = false
         }
     }
 
@@ -120,7 +199,7 @@ final class AppModel: ObservableObject {
 
             do {
                 let preview = try await resumeProvider.preview(checkpointID: checkpoint.id)
-                resumeSelection = ResumeSelection(targets: preview.targets)
+                resumeSelection = ResumeSelection(targets: preview.targets, selectsAll: false)
                 resumeResults = []
                 resumePreview = preview
             } catch {
@@ -154,7 +233,7 @@ final class AppModel: ObservableObject {
                     targetIDs: resumeSelection.selectedIDs
                 )
             } catch {
-                resumeErrorMessage = "Continue could not resume the selected items."
+                resumeErrorMessage = "Continue could not open the selected items."
             }
 
             isResuming = false
@@ -172,6 +251,11 @@ final class AppModel: ObservableObject {
         var updatedPreferences = preferences
         updatedPreferences.interpretationEnabled = isEnabled
         preferences = updatedPreferences
+
+        Task {
+            await runtimeController.setSummariesEnabled(isEnabled)
+            await refreshRuntime(notifyOnReturn: false)
+        }
     }
 
     func setVoiceBriefingsEnabled(_ isEnabled: Bool) {
@@ -180,13 +264,13 @@ final class AppModel: ObservableObject {
         preferences = updatedPreferences
 
         if !isEnabled {
-            stopVoiceBriefing()
+            stopVoiceConversation()
         }
     }
 
     func setIdleThreshold(minutes: Int) {
         var updatedPreferences = preferences
-        updatedPreferences.idleThresholdMinutes = min(max(minutes, 5), 60)
+        updatedPreferences.idleThresholdMinutes = min(max(minutes, 1), 60)
         preferences = updatedPreferences
     }
 
@@ -195,5 +279,32 @@ final class AppModel: ObservableObject {
         var updatedPreferences = preferences
         updatedPreferences.checkpointRetentionDays = days
         preferences = updatedPreferences
+    }
+
+    private func refreshRuntime(notifyOnReturn: Bool) async {
+        let previousPhase = runtime.phase
+        let updatedRuntime = await runtimeProvider.snapshot()
+        runtime = updatedRuntime
+
+        guard
+            notifyOnReturn,
+            RuntimeTransition.shouldNotifyReturn(
+                previous: previousPhase,
+                current: updatedRuntime.phase,
+                summariesEnabled: preferences.interpretationEnabled
+            )
+        else { return }
+
+        do {
+            guard let latest = try await checkpointProvider.latest() else { return }
+            let resolved = checkpointEdits[latest.id] ?? latest
+            guard !dismissedCheckpointIDs.contains(latest.id) else { return }
+            checkpoint = resolved
+        } catch {
+            errorMessage = "Continue could not load the latest checkpoint."
+            return
+        }
+
+        await returnNotifier.notifyReturnSummaryReady()
     }
 }

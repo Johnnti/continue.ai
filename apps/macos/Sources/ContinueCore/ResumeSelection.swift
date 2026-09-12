@@ -2,7 +2,7 @@ public struct ResumeSelection: Equatable, Sendable {
     public private(set) var selectedIDs: Set<String>
     private let availableIDs: Set<String>
 
-    public init(targets: [ResumeTarget], selectsAll: Bool = true) {
+    public init(targets: [ResumeTarget], selectsAll: Bool = false) {
         availableIDs = Set(targets.map(\.id))
         selectedIDs = selectsAll ? availableIDs : []
     }

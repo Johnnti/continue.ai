@@ -3,13 +3,19 @@ import SwiftUI
 
 struct NowView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.dismissWindow) private var dismissWindow
+    @State private var isEditingNextStep = false
+    @State private var editedNextStep = ""
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 appHeader
-                CaptureStatusStrip(snapshot: model.runtime)
-                VoiceBriefingPanel(model: model)
+                CaptureStatusStrip(
+                    snapshot: model.runtime,
+                    summariesEnabled: model.preferences.interpretationEnabled
+                )
+                VoiceConversationPanel(model: model)
                 content
                 PrivacyNotice()
             }
@@ -48,9 +54,13 @@ struct NowView: View {
 
     private var appHeader: some View {
         HStack(alignment: .center, spacing: 14) {
-            Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(ContinueTheme.accent)
+            IridescenceView(
+                level: 0.22,
+                tint: SIMD3<Float>(0.30, 0.62, 1.0),
+                isAnimated: true
+            )
+            .frame(width: 36, height: 36)
+            .clipShape(Circle())
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -84,7 +94,16 @@ struct NowView: View {
                 checkpoint: checkpoint,
                 isPreparingResume: model.isPreparingResume,
                 resumeErrorMessage: model.resumeErrorMessage,
-                onReviewResume: model.prepareResume
+                onDone: {
+                    model.stopVoiceConversation()
+                    dismissWindow(id: "main")
+                },
+                onEditNextStep: {
+                    editedNextStep = checkpoint.nextSteps.first ?? ""
+                    isEditingNextStep = true
+                },
+                onDismiss: model.dismissCheckpoint,
+                onReopenMissingItem: model.prepareResume
             )
         } else {
             emptyState
@@ -125,7 +144,7 @@ struct NowView: View {
     }
 }
 
-private struct VoiceBriefingPanel: View {
+private struct VoiceConversationPanel: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
@@ -134,10 +153,9 @@ private struct VoiceBriefingPanel: View {
                 state: displayState,
                 levels: model.voice.levels
             )
-            .frame(maxWidth: 300)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("Voice briefing")
+                Text("Voice conversation")
                     .font(.subheadline.weight(.semibold))
                 Text(statusText)
                     .font(.caption)
@@ -154,24 +172,18 @@ private struct VoiceBriefingPanel: View {
 
             Button(buttonTitle, systemImage: buttonIcon) {
                 if isActive {
-                    model.stopVoiceBriefing()
+                    model.stopVoiceConversation()
                 } else {
-                    model.startVoiceBriefing()
+                    model.startVoiceConversation()
                 }
             }
             .buttonStyle(.bordered)
             .disabled(
                 !model.preferences.voiceBriefingsEnabled
                     || model.isVoiceTransitioning
-                    || model.checkpoint == nil
+                    || (!isActive && model.checkpoint == nil)
             )
-            .accessibilityIdentifier("voice.toggle-briefing")
-        }
-        .padding(16)
-        .background(ContinueTheme.surface, in: RoundedRectangle(cornerRadius: 16))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(.primary.opacity(0.08))
+            .accessibilityIdentifier("voice.toggle-conversation")
         }
     }
 
@@ -186,7 +198,7 @@ private struct VoiceBriefingPanel: View {
 
     private var buttonTitle: String {
         guard model.preferences.voiceBriefingsEnabled else { return "Disabled" }
-        return isActive ? "Stop" : "Hear briefing"
+        return isActive ? "End" : "Start conversation"
     }
 
     private var buttonIcon: String {
@@ -201,15 +213,15 @@ private struct VoiceBriefingPanel: View {
 
         return switch displayState {
         case .disconnected:
-            "Ready when you are"
+            "Ask what you were doing or what comes next"
         case .connecting:
             "Connecting…"
         case .listening:
             "Listening"
         case .thinking:
-            "Preparing a response"
+            "Thinking"
         case .speaking:
-            "Speaking your checkpoint"
+            "Responding"
         case .muted:
             "Microphone muted"
         case let .failed(message):
@@ -224,20 +236,33 @@ private struct VoiceBriefingPanel: View {
 
 private struct CaptureStatusStrip: View {
     let snapshot: RuntimeSnapshot
+    let summariesEnabled: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: statusIcon)
-                .foregroundStyle(statusColor)
-                .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 18) {
+                Label("Screenpipe recording: \(captureLabel)", systemImage: statusIcon)
+                    .foregroundStyle(statusColor)
+
+                Divider()
+                    .frame(height: 16)
+
+                Label(
+                    "Continue summaries: \(summariesEnabled ? "On" : "Paused")",
+                    systemImage: summariesEnabled ? "sparkles" : "pause.circle"
+                )
+                .foregroundStyle(summariesEnabled ? ContinueTheme.accent : .secondary)
+
+                Spacer()
+
+                Text(phaseLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline.weight(.medium))
 
             Text(snapshot.statusMessage)
-                .font(.subheadline.weight(.medium))
-
-            Spacer()
-
-            Text(phaseLabel)
-                .font(.caption.weight(.semibold))
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)
@@ -254,8 +279,10 @@ private struct CaptureStatusStrip: View {
         switch snapshot.captureStatus {
         case .checking:
             "arrow.triangle.2.circlepath"
-        case .available:
-            "checkmark.circle.fill"
+        case .recording:
+            "record.circle.fill"
+        case .paused:
+            "pause.circle"
         case .unavailable:
             "exclamationmark.circle.fill"
         }
@@ -265,10 +292,25 @@ private struct CaptureStatusStrip: View {
         switch snapshot.captureStatus {
         case .checking:
             .secondary
-        case .available:
+        case .recording:
             ContinueTheme.success
+        case .paused:
+            .secondary
         case .unavailable:
             .orange
+        }
+    }
+
+    private var captureLabel: String {
+        switch snapshot.captureStatus {
+        case .checking:
+            "Checking"
+        case .recording:
+            "On"
+        case .paused:
+            "Paused"
+        case .unavailable:
+            "Off"
         }
     }
 
@@ -290,7 +332,10 @@ private struct CheckpointCard: View {
     let checkpoint: Checkpoint
     let isPreparingResume: Bool
     let resumeErrorMessage: String?
-    let onReviewResume: () -> Void
+    let onDone: () -> Void
+    let onEditNextStep: () -> Void
+    let onDismiss: () -> Void
+    let onReopenMissingItem: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -343,29 +388,52 @@ private struct CheckpointCard: View {
                 )
             }
 
-            HStack {
-                Text("Nothing opens until you review and confirm it.")
+            HStack(alignment: .center, spacing: 12) {
+                Text("Continue leaves your current app and windows unchanged.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
+                Button("Done", systemImage: "checkmark") {
+                    onDone()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(ContinueTheme.accent)
+                .keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("checkpoint.done")
+            }
+
+            HStack(spacing: 10) {
+                Button("Edit next step", systemImage: "pencil") {
+                    onEditNextStep()
+                }
+                .buttonStyle(.bordered)
+
                 Button {
-                    onReviewResume()
+                    onReopenMissingItem()
                 } label: {
                     if isPreparingResume {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Label("Review & resume", systemImage: "arrow.up.forward.app")
+                        Label("Something closed?", systemImage: "plus.square.on.square")
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(ContinueTheme.accent)
+                .buttonStyle(.bordered)
                 .disabled(isPreparingResume || checkpoint.resumeTargets.isEmpty)
-                .accessibilityLabel(isPreparingResume ? "Preparing resume review" : "Review and resume")
+                .accessibilityLabel(
+                    isPreparingResume ? "Preparing missing-item review" : "Reopen a missing item"
+                )
                 .accessibilityIdentifier("resume.review")
-                .keyboardShortcut("r", modifiers: [.command, .shift])
+
+                Spacer()
+
+                Button("Dismiss summary", systemImage: "xmark") {
+                    onDismiss()
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
             }
 
             if let resumeErrorMessage {
@@ -381,6 +449,54 @@ private struct CheckpointCard: View {
                 .stroke(.primary.opacity(0.09))
         }
         .shadow(color: .black.opacity(0.06), radius: 18, y: 8)
+    }
+}
+
+private struct EditNextStepView: View {
+    @Binding var nextStep: String
+    let onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Correct the next step")
+                    .font(.title2.weight(.semibold))
+                Text("Use the action you actually want to resume. This correction stays in the local app session.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            TextEditor(text: $nextStep)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(10)
+                .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(.primary.opacity(0.10))
+                }
+                .frame(minHeight: 110)
+
+            HStack {
+                Spacer()
+
+                Button("Cancel") {
+                    dismiss()
+                }
+
+                Button("Save") {
+                    onSave()
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(ContinueTheme.accent)
+                .disabled(nextStep.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 480, height: 270)
     }
 }
 

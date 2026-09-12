@@ -9,7 +9,8 @@ public enum RuntimePhase: String, Codable, Sendable {
 
 public enum CaptureStatus: Equatable, Sendable {
     case checking
-    case available
+    case recording
+    case paused
     case unavailable(reason: String)
 }
 
@@ -29,6 +30,16 @@ public struct RuntimeSnapshot: Equatable, Sendable {
         self.captureStatus = captureStatus
         self.statusMessage = statusMessage
         self.lastActivityAt = lastActivityAt
+    }
+}
+
+public enum RuntimeTransition {
+    public static func shouldNotifyReturn(
+        previous: RuntimePhase,
+        current: RuntimePhase,
+        summariesEnabled: Bool
+    ) -> Bool {
+        summariesEnabled && previous == .away && current == .returning
     }
 }
 
@@ -112,6 +123,21 @@ public struct Checkpoint: Codable, Equatable, Identifiable, Sendable {
         self.confidence = confidence
         self.evidence = evidence
         self.resumeTargets = resumeTargets
+    }
+
+    public func replacingNextSteps(with nextSteps: [String]) -> Checkpoint {
+        Checkpoint(
+            id: id,
+            createdAt: createdAt,
+            awayDurationMinutes: awayDurationMinutes,
+            headline: headline,
+            summary: summary,
+            completed: completed,
+            nextSteps: nextSteps,
+            confidence: confidence,
+            evidence: evidence,
+            resumeTargets: resumeTargets
+        )
     }
 }
 

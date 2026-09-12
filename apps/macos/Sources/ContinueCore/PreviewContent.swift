@@ -5,8 +5,8 @@ public enum PreviewContent {
 
     public static let runtimeSnapshot = RuntimeSnapshot(
         phase: .returning,
-        captureStatus: .available,
-        statusMessage: "Screenpipe is ready · activity updated 2 minutes ago",
+        captureStatus: .recording,
+        statusMessage: "Screenpipe recording · activity updated 2 minutes ago",
         lastActivityAt: referenceDate.addingTimeInterval(-120)
     )
 
@@ -76,11 +76,35 @@ public enum PreviewContent {
     ]
 }
 
-public struct PreviewRuntimeProvider: RuntimeProviding {
-    public init() {}
+public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling {
+    private var currentSnapshot: RuntimeSnapshot
+
+    public init(snapshot: RuntimeSnapshot = PreviewContent.runtimeSnapshot) {
+        currentSnapshot = snapshot
+    }
 
     public func snapshot() async -> RuntimeSnapshot {
-        PreviewContent.runtimeSnapshot
+        currentSnapshot
+    }
+
+    public func markSteppingAway() async {
+        currentSnapshot = RuntimeSnapshot(
+            phase: .away,
+            captureStatus: currentSnapshot.captureStatus,
+            statusMessage: "Manual away mode is active",
+            lastActivityAt: currentSnapshot.lastActivityAt
+        )
+    }
+
+    public func setSummariesEnabled(_ isEnabled: Bool) async {
+        currentSnapshot = RuntimeSnapshot(
+            phase: isEnabled ? currentSnapshot.phase : .observing,
+            captureStatus: currentSnapshot.captureStatus,
+            statusMessage: isEnabled
+                ? "Continue summaries resumed \u{00B7} Screenpipe is still recording"
+                : "Continue summaries paused \u{00B7} Screenpipe is still recording",
+            lastActivityAt: currentSnapshot.lastActivityAt
+        )
     }
 }
 
@@ -119,7 +143,7 @@ public actor PreviewVoiceProvider: VoiceProviding {
 
     public func start(briefing: String) async throws {
         currentSnapshot = VoiceSnapshot(
-            state: .speaking,
+            state: .listening,
             levels: PreviewContent.listeningLevels
         )
     }

@@ -15,6 +15,7 @@ struct SettingsView: View {
                 }
 
                 captureSection
+                notificationSection
                 voiceSection
                 privacySection
 
@@ -37,11 +38,11 @@ struct SettingsView: View {
     private var captureSection: some View {
         SettingsSection(
             title: "Activity context",
-            subtitle: "Screenpipe local API is the primary source. macOS foreground-app events can provide supplemental return hints.",
+            subtitle: "Screenpipe records local activity while enabled. Continue checks that local service periodically and creates summaries separately.",
             systemImage: "rectangle.on.rectangle"
         ) {
             Toggle(
-                "Interpret Screenpipe summaries",
+                "Create return summaries from Screenpipe",
                 isOn: Binding(
                     get: { model.preferences.interpretationEnabled },
                     set: { model.setInterpretationEnabled($0) }
@@ -55,34 +56,82 @@ struct SettingsView: View {
                     get: { model.preferences.idleThresholdMinutes },
                     set: { model.setIdleThreshold(minutes: $0) }
                 ),
-                in: 5...60,
-                step: 5
+                in: 1...60,
+                step: 1
             )
 
             HStack {
-                Label("Capture service", systemImage: captureStatusIcon)
+                Label("Screenpipe recording", systemImage: captureStatusIcon)
                 Spacer()
                 Text(captureStatusText)
                     .foregroundStyle(.secondary)
             }
             .font(.subheadline)
+
+            HStack {
+                Label(
+                    "Continue summaries",
+                    systemImage: model.preferences.interpretationEnabled ? "sparkles" : "pause.circle"
+                )
+                Spacer()
+                Text(model.preferences.interpretationEnabled ? "On" : "Paused")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+
+            Label(
+                "Pausing Continue summaries does not stop Screenpipe recording.",
+                systemImage: "info.circle"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
     private var voiceSection: some View {
         SettingsSection(
             title: "Voice",
-            subtitle: "The waveform represents the live voice session. Continue does not store microphone samples for visualization.",
+            subtitle: "Start a two-way voice conversation when you want one. The waveform represents the live session; the microphone does not start automatically.",
             systemImage: "waveform"
         ) {
             Toggle(
-                "Enable spoken return briefings",
+                "Enable voice conversations",
                 isOn: Binding(
                     get: { model.preferences.voiceBriefingsEnabled },
                     set: { model.setVoiceBriefingsEnabled($0) }
                 )
             )
             .accessibilityIdentifier("settings.voice-briefings")
+        }
+    }
+
+    private var notificationSection: some View {
+        SettingsSection(
+            title: "Return notifications",
+            subtitle: "Continue posts a passive, generic notification when a new return summary is ready. Delivery never opens or focuses Continue automatically.",
+            systemImage: "bell"
+        ) {
+            HStack {
+                Label("Notification permission", systemImage: notificationStatusIcon)
+                Spacer()
+                Text(notificationStatusText)
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+
+            if model.notificationAuthorization == .notDetermined {
+                Button("Enable return notifications") {
+                    model.requestNotificationAuthorization()
+                }
+                .disabled(model.isRequestingNotificationAuthorization)
+            } else if model.notificationAuthorization == .denied {
+                Label(
+                    "Notifications are disabled in macOS System Settings.",
+                    systemImage: "exclamationmark.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -107,7 +156,7 @@ struct SettingsView: View {
             .accessibilityIdentifier("settings.checkpoint-retention")
 
             Label(
-                "Resume actions always require a separate confirmation.",
+                "Continue never switches apps or reopens items automatically.",
                 systemImage: "hand.raised"
             )
             .font(.subheadline)
@@ -119,8 +168,10 @@ struct SettingsView: View {
         switch model.runtime.captureStatus {
         case .checking:
             "arrow.triangle.2.circlepath"
-        case .available:
-            "checkmark.circle.fill"
+        case .recording:
+            "record.circle.fill"
+        case .paused:
+            "pause.circle"
         case .unavailable:
             "exclamationmark.circle.fill"
         }
@@ -130,10 +181,38 @@ struct SettingsView: View {
         switch model.runtime.captureStatus {
         case .checking:
             "Checking"
-        case .available:
-            "Available"
+        case .recording:
+            "On"
+        case .paused:
+            "Paused"
         case let .unavailable(reason):
-            reason
+            "Off · \(reason)"
+        }
+    }
+
+    private var notificationStatusIcon: String {
+        switch model.notificationAuthorization {
+        case .checking:
+            "arrow.triangle.2.circlepath"
+        case .notDetermined:
+            "bell.badge"
+        case .enabled:
+            "checkmark.circle.fill"
+        case .denied:
+            "bell.slash"
+        }
+    }
+
+    private var notificationStatusText: String {
+        switch model.notificationAuthorization {
+        case .checking:
+            "Checking"
+        case .notDetermined:
+            "Not enabled"
+        case .enabled:
+            "Enabled"
+        case .denied:
+            "Disabled"
         }
     }
 }
