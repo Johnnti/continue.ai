@@ -15,7 +15,6 @@ struct WaveformView: View {
         )
         .aspectRatio(1, contentMode: .fit)
         .frame(width: 360, height: 360)
-        .clipShape(Circle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Voice waveform")
         .accessibilityValue(accessibilityState)

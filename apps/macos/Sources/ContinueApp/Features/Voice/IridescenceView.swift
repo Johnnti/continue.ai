@@ -11,12 +11,14 @@ struct IridescenceView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> MTKView {
-        let view = MTKView()
+        let view = SharpMTKView()
         view.device = MTLCreateSystemDefaultDevice()
         view.wantsLayer = true
         view.layer?.isOpaque = false
         view.layer?.backgroundColor = NSColor.clear.cgColor
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        view.autoResizeDrawable = false
+        view.updateDrawableSize()
         view.preferredFramesPerSecond = 60
         view.enableSetNeedsDisplay = !isAnimated
         view.isPaused = !isAnimated
@@ -29,8 +31,32 @@ struct IridescenceView: NSViewRepresentable {
         context.coordinator.tint = tint
         view.enableSetNeedsDisplay = !isAnimated
         view.isPaused = !isAnimated
+        (view as? SharpMTKView)?.updateDrawableSize()
         if !isAnimated {
             view.setNeedsDisplay(view.bounds)
+        }
+    }
+
+    /// Keeps the Metal drawable in backing pixels instead of rendering a 1x
+    /// texture and letting AppKit scale it across a Retina view.
+    private final class SharpMTKView: MTKView {
+        override func layout() {
+            super.layout()
+            updateDrawableSize()
+        }
+
+        func updateDrawableSize() {
+            let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1
+            let targetSize = CGSize(
+                width: max(bounds.width * scale, 1),
+                height: max(bounds.height * scale, 1)
+            )
+
+            if abs(drawableSize.width - targetSize.width) > 0.5
+                || abs(drawableSize.height - targetSize.height) > 0.5 {
+                drawableSize = targetSize
+            }
+            layer?.contentsScale = scale
         }
     }
 
