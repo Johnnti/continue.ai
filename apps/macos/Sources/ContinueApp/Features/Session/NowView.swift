@@ -19,6 +19,20 @@ struct NowView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(ContinueTheme.canvas)
+        .sheet(
+            isPresented: Binding(
+                get: { model.resumePreview != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        model.dismissResumeReview()
+                    }
+                }
+            )
+        ) {
+            if let preview = model.resumePreview {
+                ResumeApprovalView(model: model, preview: preview)
+            }
+        }
         .toolbar {
             ToolbarItem {
                 Button("Refresh", systemImage: "arrow.clockwise") {
@@ -64,7 +78,12 @@ struct NowView: View {
         } else if let errorMessage = model.errorMessage {
             errorState(errorMessage)
         } else if let checkpoint = model.checkpoint {
-            CheckpointCard(checkpoint: checkpoint)
+            CheckpointCard(
+                checkpoint: checkpoint,
+                isPreparingResume: model.isPreparingResume,
+                resumeErrorMessage: model.resumeErrorMessage,
+                onReviewResume: model.prepareResume
+            )
         } else {
             emptyState
         }
@@ -251,6 +270,9 @@ private struct CaptureStatusStrip: View {
 
 private struct CheckpointCard: View {
     let checkpoint: Checkpoint
+    let isPreparingResume: Bool
+    let resumeErrorMessage: String?
+    let onReviewResume: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -301,6 +323,35 @@ private struct CheckpointCard: View {
                 .accessibilityLabel(
                     "Source: \(evidence.sourceLabel). \(checkpoint.confidence.rawValue) confidence."
                 )
+            }
+
+            HStack {
+                Text("Nothing opens until you review and confirm it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button {
+                    onReviewResume()
+                } label: {
+                    if isPreparingResume {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Review & resume", systemImage: "arrow.up.forward.app")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(ContinueTheme.accent)
+                .disabled(isPreparingResume || checkpoint.resumeTargets.isEmpty)
+                .accessibilityLabel(isPreparingResume ? "Preparing resume review" : "Review and resume")
+            }
+
+            if let resumeErrorMessage {
+                Label(resumeErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
         .padding(28)

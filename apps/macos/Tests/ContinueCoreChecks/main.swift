@@ -22,8 +22,10 @@ struct ContinueCoreChecks {
         try await resumeProviderOnlyReturnsSelectedTargets()
         try waveformMathUsesStableSilenceFloor()
         try waveformMathClampsInputLevels()
+        try resumeSelectionRejectsUnknownIdentifiers()
+        try await resumeProviderRejectsUnknownCheckpoints()
 
-        print("ContinueCoreChecks: 7 checks passed")
+        print("ContinueCoreChecks: 9 checks passed")
     }
 
     private static func checkpointContractRoundTripsThroughJSON() throws {
@@ -103,6 +105,29 @@ struct ContinueCoreChecks {
         let bars = WaveformMath.normalizedLevels([-1, 0.5, 2], barCount: 3)
 
         try expect(bars == [0.08, 0.5, 1], "Waveform levels must remain between floor and one")
+    }
+
+    private static func resumeSelectionRejectsUnknownIdentifiers() throws {
+        let targets = PreviewContent.latestCheckpoint.resumeTargets
+        var selection = ResumeSelection(targets: targets)
+        let originalIDs = selection.selectedIDs
+
+        selection.toggle("unknown-target")
+        try expect(selection.selectedIDs == originalIDs, "Unknown target IDs must be ignored")
+
+        selection.toggle(targets[0].id)
+        try expect(!selection.contains(targets[0].id), "Known targets must be individually removable")
+    }
+
+    private static func resumeProviderRejectsUnknownCheckpoints() async throws {
+        let provider = PreviewResumeProvider()
+
+        do {
+            _ = try await provider.preview(checkpointID: "unknown-checkpoint")
+            throw CheckFailure.expected("Unknown checkpoints must not produce a resume preview")
+        } catch ContinueServiceError.checkpointNotFound {
+            return
+        }
     }
 
     private static func expect(

@@ -19,11 +19,17 @@ final class AppModel: ObservableObject {
     @Published private(set) var isVoiceTransitioning = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var voiceErrorMessage: String?
+    @Published private(set) var resumePreview: ResumePreview?
+    @Published private(set) var resumeSelection = ResumeSelection(targets: [])
+    @Published private(set) var resumeResults: [ResumeResult] = []
+    @Published private(set) var resumeErrorMessage: String?
+    @Published private(set) var isPreparingResume = false
+    @Published private(set) var isResuming = false
 
-    let resumeProvider: any ResumeProviding
     private let runtimeProvider: any RuntimeProviding
     private let checkpointProvider: any CheckpointProviding
     private let voiceProvider: any VoiceProviding
+    private let resumeProvider: any ResumeProviding
 
     init(
         runtimeProvider: any RuntimeProviding,
@@ -93,5 +99,62 @@ final class AppModel: ObservableObject {
             voice = await voiceProvider.snapshot()
             isVoiceTransitioning = false
         }
+    }
+
+    func prepareResume() {
+        guard let checkpoint, !isPreparingResume else { return }
+
+        Task {
+            isPreparingResume = true
+            resumeErrorMessage = nil
+
+            do {
+                let preview = try await resumeProvider.preview(checkpointID: checkpoint.id)
+                resumeSelection = ResumeSelection(targets: preview.targets)
+                resumeResults = []
+                resumePreview = preview
+            } catch {
+                resumeErrorMessage = "Continue could not prepare the resume review."
+            }
+
+            isPreparingResume = false
+        }
+    }
+
+    func toggleResumeTarget(_ targetID: String) {
+        var updatedSelection = resumeSelection
+        updatedSelection.toggle(targetID)
+        resumeSelection = updatedSelection
+    }
+
+    func confirmResume() {
+        guard
+            let preview = resumePreview,
+            !resumeSelection.selectedIDs.isEmpty,
+            !isResuming
+        else { return }
+
+        Task {
+            isResuming = true
+            resumeErrorMessage = nil
+
+            do {
+                resumeResults = try await resumeProvider.execute(
+                    checkpointID: preview.checkpointID,
+                    targetIDs: resumeSelection.selectedIDs
+                )
+            } catch {
+                resumeErrorMessage = "Continue could not resume the selected items."
+            }
+
+            isResuming = false
+        }
+    }
+
+    func dismissResumeReview() {
+        guard !isResuming else { return }
+        resumePreview = nil
+        resumeResults = []
+        resumeErrorMessage = nil
     }
 }
