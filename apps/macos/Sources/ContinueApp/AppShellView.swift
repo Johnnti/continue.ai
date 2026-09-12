@@ -1,3 +1,4 @@
+import ContinueCore
 import SwiftUI
 
 enum AppDestination: String, CaseIterable, Identifiable {
@@ -20,6 +21,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
 }
 
 struct AppShellView: View {
+    @ObservedObject var model: AppModel
     @State private var selection: AppDestination? = .now
 
     var body: some View {
@@ -33,17 +35,16 @@ struct AppShellView: View {
             destinationView
         }
         .navigationTitle(selection?.rawValue ?? "Continue")
+        .task {
+            await model.load()
+        }
     }
 
     @ViewBuilder
     private var destinationView: some View {
         switch selection ?? .now {
         case .now:
-            PlaceholderView(
-                title: "Welcome back",
-                message: "Your latest work checkpoint will appear here.",
-                systemImage: "sparkles"
-            )
+            NowView(model: model)
         case .history:
             PlaceholderView(
                 title: "History",
