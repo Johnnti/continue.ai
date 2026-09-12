@@ -29,6 +29,7 @@ struct AppShellView: View {
             List(AppDestination.allCases, selection: $selection) { destination in
                 Label(destination.rawValue, systemImage: destination.systemImage)
                     .tag(destination)
+                    .accessibilityIdentifier("navigation.\(destination.rawValue.lowercased())")
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 210)
         } detail: {

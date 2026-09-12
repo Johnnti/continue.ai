@@ -25,8 +25,9 @@ struct ContinueCoreChecks {
         try resumeSelectionRejectsUnknownIdentifiers()
         try await resumeProviderRejectsUnknownCheckpoints()
         try previewPreferencesExposeConservativeDefaults()
+        try await resumeProviderRejectsUnknownTargetIdentifiers()
 
-        print("ContinueCoreChecks: 10 checks passed")
+        print("ContinueCoreChecks: 11 checks passed")
     }
 
     private static func checkpointContractRoundTripsThroughJSON() throws {
@@ -138,6 +139,20 @@ struct ContinueCoreChecks {
         try expect(preferences.voiceBriefingsEnabled, "Voice briefing control must start enabled")
         try expect(preferences.idleThresholdMinutes == 15, "Default idle threshold must be 15 minutes")
         try expect(preferences.checkpointRetentionDays == 7, "Default checkpoint retention must be 7 days")
+    }
+
+    private static func resumeProviderRejectsUnknownTargetIdentifiers() async throws {
+        let provider = PreviewResumeProvider()
+
+        do {
+            _ = try await provider.execute(
+                checkpointID: PreviewContent.latestCheckpoint.id,
+                targetIDs: ["unknown-target"]
+            )
+            throw CheckFailure.expected("Unknown target IDs must not execute")
+        } catch ContinueServiceError.invalidResumeTargets {
+            return
+        }
     }
 
     private static func expect(

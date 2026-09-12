@@ -27,4 +27,5 @@ public protocol ResumeProviding: Sendable {
 
 public enum ContinueServiceError: Error, Equatable, Sendable {
     case checkpointNotFound
+    case invalidResumeTargets
 }

@@ -22,6 +22,7 @@ struct HistoryView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(ContinueTheme.canvas)
+        .accessibilityIdentifier("history.screen")
     }
 
     @ViewBuilder
@@ -99,5 +100,6 @@ private struct HistoryCard: View {
                 .stroke(.primary.opacity(0.08))
         }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("history.checkpoint.\(checkpoint.id)")
     }
 }

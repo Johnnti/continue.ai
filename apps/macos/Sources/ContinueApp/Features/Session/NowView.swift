@@ -19,6 +19,7 @@ struct NowView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(ContinueTheme.canvas)
+        .accessibilityIdentifier("now.screen")
         .sheet(
             isPresented: Binding(
                 get: { model.resumePreview != nil },
@@ -40,6 +41,7 @@ struct NowView: View {
                 }
                 .disabled(model.isLoading)
                 .help("Refresh the latest checkpoint")
+                .keyboardShortcut("r", modifiers: .command)
             }
         }
     }
@@ -97,6 +99,7 @@ struct NowView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 300)
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("now.capture-status")
     }
 
     private func errorState(_ message: String) -> some View {
@@ -128,7 +131,7 @@ private struct VoiceBriefingPanel: View {
     var body: some View {
         HStack(spacing: 20) {
             WaveformView(
-                state: model.voice.state,
+                state: displayState,
                 levels: model.voice.levels
             )
             .frame(maxWidth: 300)
@@ -157,7 +160,12 @@ private struct VoiceBriefingPanel: View {
                 }
             }
             .buttonStyle(.bordered)
-            .disabled(model.isVoiceTransitioning || model.checkpoint == nil)
+            .disabled(
+                !model.preferences.voiceBriefingsEnabled
+                    || model.isVoiceTransitioning
+                    || model.checkpoint == nil
+            )
+            .accessibilityIdentifier("voice.toggle-briefing")
         }
         .padding(16)
         .background(ContinueTheme.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -168,7 +176,7 @@ private struct VoiceBriefingPanel: View {
     }
 
     private var isActive: Bool {
-        switch model.voice.state {
+        switch displayState {
         case .connecting, .listening, .thinking, .speaking:
             true
         case .disconnected, .muted, .failed:
@@ -177,15 +185,21 @@ private struct VoiceBriefingPanel: View {
     }
 
     private var buttonTitle: String {
-        isActive ? "Stop" : "Hear briefing"
+        guard model.preferences.voiceBriefingsEnabled else { return "Disabled" }
+        return isActive ? "Stop" : "Hear briefing"
     }
 
     private var buttonIcon: String {
-        isActive ? "stop.fill" : "play.fill"
+        guard model.preferences.voiceBriefingsEnabled else { return "speaker.slash" }
+        return isActive ? "stop.fill" : "play.fill"
     }
 
     private var statusText: String {
-        switch model.voice.state {
+        guard model.preferences.voiceBriefingsEnabled else {
+            return "Disabled in Settings"
+        }
+
+        return switch displayState {
         case .disconnected:
             "Ready when you are"
         case .connecting:
@@ -201,6 +215,10 @@ private struct VoiceBriefingPanel: View {
         case let .failed(message):
             message
         }
+    }
+
+    private var displayState: VoiceState {
+        model.preferences.voiceBriefingsEnabled ? model.voice.state : .muted
     }
 }
 
@@ -346,6 +364,8 @@ private struct CheckpointCard: View {
                 .tint(ContinueTheme.accent)
                 .disabled(isPreparingResume || checkpoint.resumeTargets.isEmpty)
                 .accessibilityLabel(isPreparingResume ? "Preparing resume review" : "Review and resume")
+                .accessibilityIdentifier("resume.review")
+                .keyboardShortcut("r", modifiers: [.command, .shift])
             }
 
             if let resumeErrorMessage {

@@ -23,6 +23,7 @@ struct WaveformView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Voice waveform")
         .accessibilityValue(accessibilityState)
+        .accessibilityIdentifier("voice.waveform")
     }
 
     private func drawWaveform(

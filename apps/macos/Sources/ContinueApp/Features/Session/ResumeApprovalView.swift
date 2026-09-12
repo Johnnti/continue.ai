@@ -15,6 +15,7 @@ struct ResumeApprovalView: View {
         }
         .frame(width: 580, height: 520)
         .interactiveDismissDisabled(model.isResuming)
+        .accessibilityIdentifier("resume.approval-sheet")
     }
 
     private var header: some View {
@@ -129,6 +130,7 @@ struct ResumeApprovalView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(ContinueTheme.accent)
                 .disabled(model.resumeSelection.selectedIDs.isEmpty || model.isResuming)
+                .accessibilityIdentifier("resume.confirm")
             } else {
                 Button("Done") {
                     model.dismissResumeReview()

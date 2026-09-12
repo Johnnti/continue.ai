@@ -31,6 +31,7 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(ContinueTheme.canvas)
+        .accessibilityIdentifier("settings.screen")
     }
 
     private var captureSection: some View {
@@ -46,6 +47,7 @@ struct SettingsView: View {
                     set: { model.setInterpretationEnabled($0) }
                 )
             )
+            .accessibilityIdentifier("settings.interpretation")
 
             Stepper(
                 "Create a checkpoint after \(model.preferences.idleThresholdMinutes) minutes away",
@@ -80,6 +82,7 @@ struct SettingsView: View {
                     set: { model.setVoiceBriefingsEnabled($0) }
                 )
             )
+            .accessibilityIdentifier("settings.voice-briefings")
         }
     }
 
@@ -101,6 +104,7 @@ struct SettingsView: View {
                 Text("30 days").tag(30)
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.checkpoint-retention")
 
             Label(
                 "Resume actions always require a separate confirmation.",

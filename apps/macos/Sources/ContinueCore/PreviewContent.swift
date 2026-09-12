@@ -155,6 +155,11 @@ public struct PreviewResumeProvider: ResumeProviding {
         targetIDs: Set<String>
     ) async throws -> [ResumeResult] {
         let preview = try await preview(checkpointID: checkpointID)
+        let availableIDs = Set(preview.targets.map(\.id))
+        guard targetIDs.isSubset(of: availableIDs) else {
+            throw ContinueServiceError.invalidResumeTargets
+        }
+
         return preview.targets
             .filter { targetIDs.contains($0.id) }
             .map { ResumeResult(target: $0, outcome: .opened) }
