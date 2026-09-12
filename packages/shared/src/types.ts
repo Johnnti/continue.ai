@@ -14,6 +14,12 @@ export interface ResumeTarget {
   label?: string;
 }
 
+export interface MemoryFact {
+  type: "url" | "file" | "app" | "text";
+  value: string;
+  label?: string;
+}
+
 export interface SessionCheckpoint {
   id: string;
   startedAt?: string;
@@ -26,7 +32,14 @@ export interface SessionCheckpoint {
   resumeTargets: ResumeTarget[];
   confidence: number;
   sourceWindowMinutes: number;
+  tags?: string[];
+  facts?: MemoryFact[];
+  context?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
+
+export type SessionMemory = SessionCheckpoint;
 
 export type ContinueState =
   | "observing"

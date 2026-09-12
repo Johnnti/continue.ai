@@ -15,9 +15,12 @@ export async function tick(previousState: ContinueState = "observing"): Promise<
     ? (Date.now() - new Date(last.timestamp).getTime()) / (1000 * 60)
     : Number.POSITIVE_INFINITY;
 
-  if (isAway(minutesSince)) {
-    const checkpoint = await summarizeSession(activity);
+  const checkpoint = activity.length ? await summarizeSession(activity) : null;
+  if (checkpoint) {
     await store.save(checkpoint);
+  }
+
+  if (isAway(minutesSince)) {
     return "away";
   }
 

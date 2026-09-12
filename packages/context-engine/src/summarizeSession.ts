@@ -20,10 +20,14 @@ export const DEMO_CHECKPOINT: SessionCheckpoint = {
 };
 
 export async function summarizeSession(activity: ActivityEvent[]): Promise<SessionCheckpoint> {
+  const timestamp = new Date().toISOString();
+
   if (!activity.length) {
-    return {
+    const checkpoint: SessionCheckpoint = {
       id: crypto.randomUUID(),
-      endedAt: new Date().toISOString(),
+      endedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
       project: "Unknown project",
       currentTask: "Recent computer activity",
       summary: "Recent activity was captured, but context confidence is low.",
@@ -31,21 +35,46 @@ export async function summarizeSession(activity: ActivityEvent[]): Promise<Sessi
       nextAction: "Review recent files or tabs to confirm where to continue",
       resumeTargets: [],
       confidence: 0.25,
-      sourceWindowMinutes: 30
+      sourceWindowMinutes: 30,
+      tags: ["low-confidence", "unscoped"],
+      facts: [],
+      context: ["No strong activity signal captured."]
     };
+
+    return SessionCheckpointSchema.parse(checkpoint);
   }
 
   const last = activity[activity.length - 1];
+  const confidence = estimateConfidence(activity);
+  const factValues = activity
+    .flatMap((event) => [event.url, event.filePath, event.windowTitle, event.appName].filter(Boolean))
+    .slice(0, 6);
+
   const checkpoint: SessionCheckpoint = {
     ...DEMO_CHECKPOINT,
     id: crypto.randomUUID(),
-    endedAt: new Date().toISOString(),
+    endedAt: timestamp,
+    createdAt: timestamp,
+    updatedAt: timestamp,
     lastAction:
       last.windowTitle ||
       last.url ||
       last.filePath ||
       "Reviewing recent activity",
-    confidence: estimateConfidence(activity)
+    confidence,
+    tags: ["session-summary", confidence > 0.7 ? "high-confidence" : "moderate-confidence"],
+    facts: factValues
+      .filter((value): value is string => Boolean(value))
+      .slice(0, 6)
+      .map((value, index) => ({
+        type: value.startsWith("http") ? "url" : value.includes(".") || value.includes("/") ? "file" : "text",
+        value,
+        label: `Context ${index + 1}`
+      })),
+    context: [
+      `Last observed activity: ${last.windowTitle ?? last.appName ?? "unknown"}`,
+      `Captured ${activity.length} activity events in the last window.`
+    ]
   };
 
   return SessionCheckpointSchema.parse(checkpoint);

@@ -11,6 +11,7 @@
     "declaration": true,
     "sourceMap": true,
     "baseUrl": ".",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@continue/shared": ["packages/shared/src/index.ts"],
       "@continue/screenpipe": ["packages/screenpipe/src/index.ts"],
