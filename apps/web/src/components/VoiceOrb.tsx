@@ -5,17 +5,11 @@ import {
   useConversationControls,
   useConversationStatus,
 } from "@elevenlabs/react";
+import type { SessionCheckpoint } from "@continue/shared";
 
 const AGENT_ID = "agent_6701m2aempkqeh7a0922tc0b0krr";
 
-type Checkpoint = {
-  project?: string;
-  task?: string;
-  last_action?: string;
-  next_action?: string;
-};
-
-function VoiceOrbInner({ checkpoint }: { checkpoint: Checkpoint }) {
+function VoiceOrbInner({ checkpoint }: { checkpoint: SessionCheckpoint | null }) {
   const { startSession, endSession } = useConversationControls();
   const { status } = useConversationStatus();
 
@@ -34,11 +28,9 @@ function VoiceOrbInner({ checkpoint }: { checkpoint: Checkpoint }) {
         agentId: AGENT_ID,
         dynamicVariables: {
           project: checkpoint?.project ?? "Continue",
-          task: checkpoint?.task ?? "your previous task",
-          last_action:
-            checkpoint?.last_action ?? "working on your computer",
-          next_action:
-            checkpoint?.next_action ?? "continue where you left off",
+          task: checkpoint?.currentTask ?? "your previous task",
+          last_action: checkpoint?.lastAction ?? "working on your computer",
+          next_action: checkpoint?.nextAction ?? "continue where you left off",
         },
       });
     } catch (error) {
@@ -56,7 +48,7 @@ function VoiceOrbInner({ checkpoint }: { checkpoint: Checkpoint }) {
 export function VoiceOrb({
   checkpoint,
 }: {
-  checkpoint: Checkpoint;
+  checkpoint: SessionCheckpoint | null;
 }) {
   return (
     <ConversationProvider>

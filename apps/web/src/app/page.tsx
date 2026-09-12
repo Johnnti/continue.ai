@@ -18,7 +18,6 @@ export default async function Page() {
       <RecordingControls />
       {checkpoint ? <SessionCard checkpoint={checkpoint} /> : <p className="muted">No activity profile has been captured yet.</p>}
       <VoiceOrb checkpoint={checkpoint} />
-      <SessionCard checkpoint={checkpoint} />
       <section className="card">
         <h2>Recent memory</h2>
         {history.length === 0 ? (
