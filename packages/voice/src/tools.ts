@@ -6,6 +6,9 @@ export const voiceTools = {
   getCurrentContext,
   async resumeWorkspace() {
     const checkpoint = await getCurrentContext();
+    if (!checkpoint) {
+      return { ok: false, message: "No activity profile is available yet" };
+    }
     return resumeWorkspace(checkpoint.resumeTargets);
   }
 };
