@@ -9,6 +9,7 @@ struct NowView: View {
             VStack(alignment: .leading, spacing: 24) {
                 appHeader
                 CaptureStatusStrip(snapshot: model.runtime)
+                VoiceBriefingPanel(model: model)
                 content
                 PrivacyNotice()
             }
@@ -99,6 +100,88 @@ struct NowView: View {
             description: Text("Continue will prepare a checkpoint after it detects a meaningful work session and time away.")
         )
         .frame(maxWidth: .infinity, minHeight: 300)
+    }
+}
+
+private struct VoiceBriefingPanel: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 20) {
+            WaveformView(
+                state: model.voice.state,
+                levels: model.voice.levels
+            )
+            .frame(maxWidth: 300)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Voice briefing")
+                    .font(.subheadline.weight(.semibold))
+                Text(statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let error = model.voiceErrorMessage {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Button(buttonTitle, systemImage: buttonIcon) {
+                if isActive {
+                    model.stopVoiceBriefing()
+                } else {
+                    model.startVoiceBriefing()
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.isVoiceTransitioning || model.checkpoint == nil)
+        }
+        .padding(16)
+        .background(ContinueTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(.primary.opacity(0.08))
+        }
+    }
+
+    private var isActive: Bool {
+        switch model.voice.state {
+        case .connecting, .listening, .thinking, .speaking:
+            true
+        case .disconnected, .muted, .failed:
+            false
+        }
+    }
+
+    private var buttonTitle: String {
+        isActive ? "Stop" : "Hear briefing"
+    }
+
+    private var buttonIcon: String {
+        isActive ? "stop.fill" : "play.fill"
+    }
+
+    private var statusText: String {
+        switch model.voice.state {
+        case .disconnected:
+            "Ready when you are"
+        case .connecting:
+            "Connecting…"
+        case .listening:
+            "Listening"
+        case .thinking:
+            "Preparing a response"
+        case .speaking:
+            "Speaking your checkpoint"
+        case .muted:
+            "Microphone muted"
+        case let .failed(message):
+            message
+        }
     }
 }
 

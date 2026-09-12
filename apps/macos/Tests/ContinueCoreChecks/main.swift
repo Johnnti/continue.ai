@@ -20,8 +20,10 @@ struct ContinueCoreChecks {
         try await checkpointProviderHonorsZeroLimit()
         try await voiceProviderMovesBetweenSpeakingAndDisconnected()
         try await resumeProviderOnlyReturnsSelectedTargets()
+        try waveformMathUsesStableSilenceFloor()
+        try waveformMathClampsInputLevels()
 
-        print("ContinueCoreChecks: 5 checks passed")
+        print("ContinueCoreChecks: 7 checks passed")
     }
 
     private static func checkpointContractRoundTripsThroughJSON() throws {
@@ -85,6 +87,22 @@ struct ContinueCoreChecks {
 
         try expect(results.map(\.id) == [selectedID], "Only selected targets may run")
         try expect(results.first?.outcome == .opened, "Preview targets must report success")
+    }
+
+    private static func waveformMathUsesStableSilenceFloor() throws {
+        let bars = WaveformMath.normalizedLevels([], barCount: 4)
+
+        try expect(bars == [0.08, 0.08, 0.08, 0.08], "Silence must render at a stable floor")
+        try expect(
+            WaveformMath.normalizedLevels([0.5], barCount: 0).isEmpty,
+            "A zero bar count must return no levels"
+        )
+    }
+
+    private static func waveformMathClampsInputLevels() throws {
+        let bars = WaveformMath.normalizedLevels([-1, 0.5, 2], barCount: 3)
+
+        try expect(bars == [0.08, 0.5, 1], "Waveform levels must remain between floor and one")
     }
 
     private static func expect(

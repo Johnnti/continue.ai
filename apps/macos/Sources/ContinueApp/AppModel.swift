@@ -16,7 +16,9 @@ final class AppModel: ObservableObject {
         levels: Array(repeating: 0.08, count: 16)
     )
     @Published private(set) var isLoading = false
+    @Published private(set) var isVoiceTransitioning = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var voiceErrorMessage: String?
 
     let resumeProvider: any ResumeProviding
     private let runtimeProvider: any RuntimeProviding
@@ -55,6 +57,41 @@ final class AppModel: ObservableObject {
     func retry() {
         Task {
             await load()
+        }
+    }
+
+    func startVoiceBriefing() {
+        guard let checkpoint, !isVoiceTransitioning else { return }
+
+        Task {
+            isVoiceTransitioning = true
+            voiceErrorMessage = nil
+            voice = VoiceSnapshot(state: .connecting, levels: voice.levels)
+
+            do {
+                let briefing = ([checkpoint.summary] + checkpoint.nextSteps).joined(separator: " ")
+                try await voiceProvider.start(briefing: briefing)
+                voice = await voiceProvider.snapshot()
+            } catch {
+                voice = VoiceSnapshot(
+                    state: .failed(message: "Voice briefing could not start."),
+                    levels: voice.levels
+                )
+                voiceErrorMessage = "Voice briefing could not start."
+            }
+
+            isVoiceTransitioning = false
+        }
+    }
+
+    func stopVoiceBriefing() {
+        guard !isVoiceTransitioning else { return }
+
+        Task {
+            isVoiceTransitioning = true
+            await voiceProvider.stop()
+            voice = await voiceProvider.snapshot()
+            isVoiceTransitioning = false
         }
     }
 }
