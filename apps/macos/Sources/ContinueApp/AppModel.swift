@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isUpdatingRuntime = false
     @Published private(set) var notificationAuthorization: ReturnNotificationAuthorization = .checking
     @Published private(set) var isRequestingNotificationAuthorization = false
+    let dataSourceLabel: String
 
     private let runtimeProvider: any RuntimeProviding
     private let runtimeController: any RuntimeControlling
@@ -48,7 +49,8 @@ final class AppModel: ObservableObject {
         checkpointProvider: any CheckpointProviding,
         voiceProvider: any VoiceProviding,
         resumeProvider: any ResumeProviding,
-        returnNotifier: any ReturnNotifying
+        returnNotifier: any ReturnNotifying,
+        dataSourceLabel: String = "LIVE DATA"
     ) {
         self.runtimeProvider = runtimeProvider
         self.runtimeController = runtimeController
@@ -56,7 +58,14 @@ final class AppModel: ObservableObject {
         self.voiceProvider = voiceProvider
         self.resumeProvider = resumeProvider
         self.returnNotifier = returnNotifier
+        self.dataSourceLabel = dataSourceLabel
         preferences = AppPreferencesStore.load()
+
+        Task { [voiceProvider] in
+            await voiceProvider.setResumeRequestHandler { @MainActor [weak self] in
+                self?.prepareResume()
+            }
+        }
     }
 
     func startMonitoring() {
@@ -96,7 +105,7 @@ final class AppModel: ObservableObject {
                 checkpoint = nil
             }
         } catch {
-            errorMessage = "Continue could not load the latest checkpoint."
+            errorMessage = "Continue could not load the latest checkpoint: \(error.localizedDescription)"
         }
 
         do {
@@ -104,7 +113,7 @@ final class AppModel: ObservableObject {
                 checkpointEdits[$0.id] ?? $0
             }
         } catch {
-            historyErrorMessage = "Continue could not load checkpoint history."
+            historyErrorMessage = "Continue could not load checkpoint history: \(error.localizedDescription)"
         }
 
         isLoading = false
@@ -130,11 +139,12 @@ final class AppModel: ObservableObject {
                 try await voiceProvider.start(briefing: conversationContext)
                 voice = await voiceProvider.snapshot()
             } catch {
+                let message = error.localizedDescription
                 voice = VoiceSnapshot(
-                    state: .failed(message: "Voice conversation could not start."),
+                    state: .failed(message: message),
                     levels: voice.levels
                 )
-                voiceErrorMessage = "Voice conversation could not start."
+                voiceErrorMessage = message
             }
 
             isVoiceTransitioning = false
@@ -372,7 +382,7 @@ final class AppModel: ObservableObject {
             guard !dismissedCheckpointIDs.contains(latest.id) else { return }
             checkpoint = resolved
         } catch {
-            errorMessage = "Continue could not load the latest checkpoint."
+            errorMessage = "Continue could not load the latest checkpoint: \(error.localizedDescription)"
             return
         }
 

@@ -106,6 +106,7 @@ public struct SessionCheckpointV1: Codable, Equatable, Sendable {
 
         return Checkpoint(
             id: id,
+            project: project,
             createdAt: endedAtDate,
             awayDurationMinutes: max(0, awayDurationMinutes),
             headline: currentTask,

@@ -25,14 +25,29 @@ public protocol VoiceProviding: Sendable {
     func snapshot() async -> VoiceSnapshot
     func start(briefing: String) async throws
     func stop() async
+    func setResumeRequestHandler(_ handler: ResumeRequestHandler?) async
 }
+
+public typealias ResumeRequestHandler = @MainActor @Sendable () -> Void
 
 public protocol ResumeProviding: Sendable {
     func preview(checkpointID: String) async throws -> ResumePreview
     func execute(checkpointID: String, targetIDs: Set<String>) async throws -> [ResumeResult]
 }
 
-public enum ContinueServiceError: Error, Equatable, Sendable {
+public enum ContinueServiceError: Error, Equatable, LocalizedError, Sendable {
     case checkpointNotFound
     case invalidResumeTargets
+    case databaseUnavailable(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .checkpointNotFound:
+            "The requested checkpoint was not found."
+        case .invalidResumeTargets:
+            "The selected resume targets are no longer available."
+        case let .databaseUnavailable(message):
+            "The local checkpoint database is unavailable: \(message)"
+        }
+    }
 }

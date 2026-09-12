@@ -129,7 +129,11 @@ The product client consumes service contracts and does not modify the implementa
 
 ## Current verification status
 
-The current native client is still a fixture-backed preview. It does not claim to use a live Screenpipe process, live model, live voice provider, persistent database, or real workspace opener.
+The current native client uses the shared SQLite checkpoint database and the
+official ElevenLabs voice provider. Screenpipe capture/runtime coordination,
+model summarization, and real workspace opening remain explicit preview or
+pending boundaries; the app does not silently substitute fixture checkpoints
+when the database is empty.
 
 The repository currently verifies the following behavior:
 

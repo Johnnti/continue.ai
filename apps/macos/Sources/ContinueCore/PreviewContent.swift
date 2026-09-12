@@ -203,6 +203,7 @@ public actor PreviewVoiceProvider: VoiceProviding {
         state: .disconnected,
         levels: Array(repeating: 0.08, count: 16)
     )
+    private var resumeRequestHandler: ResumeRequestHandler?
 
     public init() {}
 
@@ -222,6 +223,10 @@ public actor PreviewVoiceProvider: VoiceProviding {
             state: .disconnected,
             levels: Array(repeating: 0.08, count: 16)
         )
+    }
+
+    public func setResumeRequestHandler(_ handler: ResumeRequestHandler?) async {
+        resumeRequestHandler = handler
     }
 }
 

@@ -13,17 +13,29 @@ let package = Package(
         .executable(name: "ContinueControlExtension", targets: ["ContinueControlExtension"]),
         .executable(name: "ContinueCoreChecks", targets: ["ContinueCoreChecks"])
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/elevenlabs/elevenlabs-swift-sdk.git",
+            exact: "3.3.1"
+        )
+    ],
     targets: [
         .target(
             name: "ContinueCore",
             path: "Sources/ContinueCore",
             resources: [
                 .copy("Resources/Contracts")
+            ],
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
             ]
         ),
         .executableTarget(
             name: "ContinueApp",
-            dependencies: ["ContinueCore"],
+            dependencies: [
+                "ContinueCore",
+                .product(name: "ElevenLabs", package: "elevenlabs-swift-sdk")
+            ],
             path: "Sources/ContinueApp"
         ),
         .executableTarget(
@@ -34,7 +46,10 @@ let package = Package(
             name: "ContinueCoreChecks",
             dependencies: ["ContinueCore"],
             path: "Tests/ContinueCoreChecks",
-            sources: ["main.swift"]
+            sources: ["main.swift"],
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
         )
     ]
 )

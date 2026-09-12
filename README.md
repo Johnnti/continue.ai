@@ -1,9 +1,11 @@
 # continue.ai
 
 Continue is a local-first context-resume assistant. The repository contains a
-fixture-backed native macOS preview and a separate web harness. The macOS
-preview presents a voice-first return checkpoint without focusing another app,
-reopening windows, or writing raw screen/audio data to Continue's store.
+native macOS client and a separate web harness. The macOS client reads the
+shared SQLite checkpoint database, starts ElevenLabs conversations through the
+official Swift SDK, and presents a voice-first return checkpoint without
+focusing another app, reopening windows, or writing raw screen/audio data to
+Continue's store.
 
 The product decisions are recorded in
 [`docs/PRODUCT_DECISIONS.md`](docs/PRODUCT_DECISIONS.md). The longer research
@@ -30,11 +32,13 @@ embeds the Control Center extension, signs both bundles for local use, opens the
 Continue window, and adds a Continue item to the menu bar. Quit Continue from
 its menu-bar item when you finish using the preview.
 
-The current native client is intentionally fixture-backed. `ContinueDesktopApp`
-injects `PreviewRuntimeProvider`, `PreviewCheckpointProvider`,
-`PreviewVoiceProvider`, and `PreviewResumeProvider`, so the window can be
-reviewed without Screenpipe, model credentials, a live voice SDK, a database,
-or a real workspace opener. The `PREVIEW DATA` label identifies this state.
+The native client uses `PreviewRuntimeProvider` until the live Screenpipe
+coordinator is connected, but its checkpoint and voice boundaries are live:
+`SQLiteCheckpointProvider` reads the shared `data/memory.sqlite` schema,
+`StoredCheckpointResumeProvider` validates targets from that database, and
+`ElevenLabsVoiceProvider` starts the configured public agent or requests a
+short-lived conversation token. If the database has no records, the UI shows
+an empty state instead of silently substituting fixture data.
 
 Useful native commands:
 
@@ -45,7 +49,7 @@ swift build --package-path apps/macos --product ContinueApp
 # Build and validate the Control Center extension without opening the app.
 apps/macos/scripts/run-app.sh --no-open
 
-# Run the deterministic core checks (23 checks at the time of writing).
+# Run the deterministic core checks (26 checks at the time of writing).
 swift run --package-path apps/macos ContinueCoreChecks
 
 # Run Swift checks, build with warnings-as-errors, then run workspace checks.
@@ -87,6 +91,28 @@ restored the next time Continue opens. The preview exposes:
 
 Older saved payloads are decoded with conservative defaults for any preference
 that does not exist yet, so upgrades do not reset the controls a person set.
+
+## Live integrations
+
+The native app reads the same SQLite database used by the TypeScript memory
+package. Set `CONTINUE_MEMORY_DATABASE_PATH` when the database is outside the
+repository; the preview script automatically points the app at
+`data/memory.sqlite`. The native adapter creates the compatible `memories`
+table when the database is new and reads only compact interpreted checkpoint
+JSON, never raw Screenpipe frames or microphone audio.
+
+Voice uses the pinned ElevenLabs Conversational AI Swift SDK (`3.3.1`). A
+public agent can connect with `CONTINUE_ELEVENLABS_AGENT_ID` (the existing
+public demo agent is the default). Private agents should set
+`CONTINUE_ELEVENLABS_TOKEN_URL` to a backend endpoint that returns
+`{"token":"..."}` or `{"conversation_token":"..."}`. The ElevenLabs API key
+must remain on that backend and is never bundled in the macOS app.
+
+The voice adapter passes the current checkpoint as dynamic context, sends the
+written briefing after connection, maps agent/VAD state into the waveform, and
+handles the initial client tools: `get_last_session`, `get_session_context`,
+and `request_resume_workspace`. The last tool only opens Continue's local
+approval sheet; it cannot open a file, URL, or application by itself.
 
 ## Add the Control Center button
 
@@ -169,24 +195,24 @@ flowchart TD
     Model --> Resume["ResumeProviding"]
     Model --> Notify["ReturnNotifying"]
 
-    subgraph Preview["Current fixture-backed adapters"]
-        PreviewRuntime["PreviewRuntimeProvider"]
-        PreviewCheckpoints["PreviewCheckpointProvider"]
-        PreviewVoice["PreviewVoiceProvider"]
-        PreviewResume["PreviewResumeProvider"]
+    subgraph Adapters["Native adapters"]
+        PreviewRuntime["PreviewRuntimeProvider<br/>Screenpipe pending"]
+        SQLiteCheckpoints["SQLiteCheckpointProvider"]
+        ElevenLabsVoice["ElevenLabsVoiceProvider"]
+        StoredResume["StoredCheckpointResumeProvider"]
         SystemNotify["SystemReturnNotifier"]
     end
 
     Runtime -. implements .-> PreviewRuntime
-    Checkpoints -. implements .-> PreviewCheckpoints
-    Voice -. implements .-> PreviewVoice
-    Resume -. implements .-> PreviewResume
+    Checkpoints -. implements .-> SQLiteCheckpoints
+    Voice -. implements .-> ElevenLabsVoice
+    Resume -. implements .-> StoredResume
     Notify -. implements .-> SystemNotify
 
-    Screenpipe["Screenpipe local API<br/>planned live adapter"] -. bounded observations .-> Runtime
-    Store["Checkpoint store<br/>planned persistence"] -. validated records .-> Checkpoints
-    VoiceSDK["ElevenLabs Swift SDK<br/>planned live adapter"] -. session state + levels .-> Voice
-    Workspace["Approved workspace opener<br/>planned live adapter"] -. selected targets only .-> Resume
+    Screenpipe["Screenpipe local API<br/>live coordinator pending"] -. bounded observations .-> Runtime
+    Store["SQLite memory.sqlite"] -. validated records .-> Checkpoints
+    VoiceSDK["ElevenLabs Swift SDK"] -. session state + levels .-> Voice
+    Workspace["Approved workspace opener<br/>pending"] -. selected targets only .-> Resume
 ```
 
 The boundaries enforce these rules:

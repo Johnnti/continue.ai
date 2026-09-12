@@ -11,6 +11,7 @@
 		242F003C9F3AE3ACD6881403 /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8AAF1441C660278D97A0B50 /* WaveformView.swift */; };
 		2637A338B973A889ECA3F660 /* ContinueControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED936772BE139532355D8304 /* ContinueControl.swift */; };
 		29C62DBA5D0BEAE5F996DCC3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 859E0978D7EC2A87B10B7C67 /* SettingsView.swift */; };
+		35333BF8F48929D0D16DF869 /* ElevenLabsVoiceProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76916F7BE7E5B1E8BA1948E /* ElevenLabsVoiceProvider.swift */; };
 		3F6811ABFC8B93845D4A25A1 /* ResumeApprovalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF70A646E49853E74174CEE /* ResumeApprovalView.swift */; };
 		60D6A3595C619596C04F7D05 /* ContinueTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3090E7D7D6E5F352E8EF8FD4 /* ContinueTheme.swift */; };
 		624F9241BF7BAD0F81C11D1F /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AAFC88EB6456E5BED2DCE85 /* MenuBarView.swift */; };
@@ -18,6 +19,7 @@
 		7DC3CA974B15CD4595153CB5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1555058120F09E86173FF2 /* AppModel.swift */; };
 		864389C097DB0B6F8D634FFF /* IridescenceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7119F8219BD9C1CEE996A1B5 /* IridescenceView.swift */; };
 		9E1133158C112A85385149F3 /* NowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10CD56572ADB514E208E6A1D /* NowView.swift */; };
+		9FFB6298AFCBED1B6BE4C46D /* ElevenLabs in Frameworks */ = {isa = PBXBuildFile; productRef = FA8985552C3C3D0DC73F7D37 /* ElevenLabs */; };
 		A254A4E653D3497195F324D1 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A4B3C56518DEFD040F93CE /* HistoryView.swift */; };
 		A914CA15FE19AE3266BB7A09 /* ReturnNotificationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BF7662493C7D2D49D945B5 /* ReturnNotificationProvider.swift */; };
 		B97901EA293DFF5DCD4AADA4 /* CheckpointSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD093B03B2A80ECE6994360D /* CheckpointSidebar.swift */; };
@@ -60,6 +62,7 @@
 		50BF7662493C7D2D49D945B5 /* ReturnNotificationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReturnNotificationProvider.swift; sourceTree = "<group>"; };
 		7119F8219BD9C1CEE996A1B5 /* IridescenceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IridescenceView.swift; sourceTree = "<group>"; };
 		859E0978D7EC2A87B10B7C67 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		B76916F7BE7E5B1E8BA1948E /* ElevenLabsVoiceProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevenLabsVoiceProvider.swift; sourceTree = "<group>"; };
 		B98B964557E58B4594C8D1F6 /* ContinueControlExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ContinueControlExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C268A5A42CC7B02D901F37AA /* Continue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Continue.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C9A4B3C56518DEFD040F93CE /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
@@ -75,6 +78,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				EFC11E23E788274782864EB0 /* ContinueCore in Frameworks */,
+				9FFB6298AFCBED1B6BE4C46D /* ElevenLabs in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -150,6 +154,7 @@
 		A11D7284D1E6ECFDAB0D5503 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				B76916F7BE7E5B1E8BA1948E /* ElevenLabsVoiceProvider.swift */,
 				50BF7662493C7D2D49D945B5 /* ReturnNotificationProvider.swift */,
 			);
 			path = Services;
@@ -230,6 +235,7 @@
 			name = Continue;
 			packageProductDependencies = (
 				13C8BA9F8984431FC4CAF7E6 /* ContinueCore */,
+				FA8985552C3C3D0DC73F7D37 /* ElevenLabs */,
 			);
 			productName = Continue;
 			productReference = C268A5A42CC7B02D901F37AA /* Continue.app */;
@@ -262,6 +268,7 @@
 			mainGroup = AA6344CE59593917FEF5C1A5;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				E95E9071FEAC0F51BF672916 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */,
 				669A23B1F8F036C2D637A70D /* XCLocalSwiftPackageReference "." */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -293,6 +300,7 @@
 				B97901EA293DFF5DCD4AADA4 /* CheckpointSidebar.swift in Sources */,
 				74B78BE03FC9895B6BF65DD1 /* ContinueDesktopApp.swift in Sources */,
 				60D6A3595C619596C04F7D05 /* ContinueTheme.swift in Sources */,
+				35333BF8F48929D0D16DF869 /* ElevenLabsVoiceProvider.swift in Sources */,
 				A254A4E653D3497195F324D1 /* HistoryView.swift in Sources */,
 				864389C097DB0B6F8D634FFF /* IridescenceView.swift in Sources */,
 				624F9241BF7BAD0F81C11D1F /* MenuBarView.swift in Sources */,
@@ -551,10 +559,26 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		E95E9071FEAC0F51BF672916 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/elevenlabs/elevenlabs-swift-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = 3.3.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		13C8BA9F8984431FC4CAF7E6 /* ContinueCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ContinueCore;
+		};
+		FA8985552C3C3D0DC73F7D37 /* ElevenLabs */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E95E9071FEAC0F51BF672916 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */;
+			productName = ElevenLabs;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

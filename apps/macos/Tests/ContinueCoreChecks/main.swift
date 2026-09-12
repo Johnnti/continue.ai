@@ -1,5 +1,6 @@
 import ContinueCore
 import Foundation
+import SQLite3
 
 private enum CheckFailure: Error, CustomStringConvertible {
     case expected(String)
@@ -38,8 +39,11 @@ struct ContinueCoreChecks {
         try preferencesPersistThroughStore()
         try appPreferencesDecodeLegacyPayload()
         try await runtimeControllerAppliesTrackingPolicy()
+        try await sqliteCheckpointProviderReadsSharedMemory()
+        try await storedResumeProviderUsesDatabaseTargets()
+        try integrationConfigurationHonorsOverrides()
 
-        print("ContinueCoreChecks: 23 checks passed")
+        print("ContinueCoreChecks: 26 checks passed")
     }
 
     private static func checkpointContractRoundTripsThroughJSON() throws {
@@ -173,6 +177,7 @@ struct ContinueCoreChecks {
         let checkpoint = try contract.makeCheckpoint(awayDurationMinutes: 42)
 
         try expect(contract.project == "continue.ai", "Contract fixture must retain the project")
+        try expect(checkpoint.project == contract.project, "Checkpoint must retain the project")
         try expect(checkpoint.headline == contract.currentTask, "UI headline must map from currentTask")
         try expect(checkpoint.completed == [contract.lastAction], "Completed work must map from lastAction")
         try expect(checkpoint.nextSteps == [contract.nextAction], "Next steps must map from nextAction")
@@ -440,6 +445,108 @@ struct ContinueCoreChecks {
             suppressed.phase != .away,
             "Manual away must be ignored while summaries are paused"
         )
+    }
+
+    private static func sqliteCheckpointProviderReadsSharedMemory() async throws {
+        let databaseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("continue-core-check-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: databaseURL) }
+
+        try createSharedMemoryFixture(at: databaseURL)
+        let provider = SQLiteCheckpointProvider(databaseURL: databaseURL)
+
+        let latest = try await provider.latest()
+        let history = try await provider.history(limit: 10)
+
+        try expect(
+            latest?.id == "live-checkpoint",
+            "SQLite provider must decode the shared memory database payload"
+        )
+        try expect(
+            history.first?.resumeTargets.first?.locator == "https://example.com",
+            "SQLite provider must retain canonical resume target locators"
+        )
+    }
+
+    private static func storedResumeProviderUsesDatabaseTargets() async throws {
+        let databaseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("continue-resume-check-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: databaseURL) }
+
+        try createSharedMemoryFixture(at: databaseURL)
+        let checkpointProvider = SQLiteCheckpointProvider(databaseURL: databaseURL)
+        let resumeProvider = StoredCheckpointResumeProvider(checkpointProvider: checkpointProvider)
+        let preview = try await resumeProvider.preview(checkpointID: "live-checkpoint")
+        let results = try await resumeProvider.execute(
+            checkpointID: preview.checkpointID,
+            targetIDs: Set(preview.targets.map(\.id))
+        )
+
+        try expect(
+            results.count == preview.targets.count,
+            "Database-backed resume must validate and return stored targets"
+        )
+    }
+
+    private static func integrationConfigurationHonorsOverrides() throws {
+        let configuration = ContinueIntegrationConfiguration(environment: [
+            "CONTINUE_MEMORY_DATABASE_PATH": "/tmp/continue-checks.sqlite",
+            "CONTINUE_ELEVENLABS_AGENT_ID": "agent_test",
+            "CONTINUE_ELEVENLABS_TOKEN_URL": "https://localhost/token",
+            "CONTINUE_ELEVENLABS_USER_ID": "continue-checks"
+        ])
+
+        try expect(
+            configuration.memoryDatabaseURL.path == "/tmp/continue-checks.sqlite",
+            "The database path must be configurable without changing source code"
+        )
+        try expect(
+            configuration.elevenLabsAgentID == "agent_test",
+            "The ElevenLabs agent ID must be configurable"
+        )
+        try expect(
+            configuration.elevenLabsTokenURL?.absoluteString == "https://localhost/token",
+            "The private-agent token endpoint must be configurable"
+        )
+        try expect(
+            configuration.elevenLabsUserID == "continue-checks",
+            "The ElevenLabs user ID must be configurable"
+        )
+    }
+
+    private static func createSharedMemoryFixture(at databaseURL: URL) throws {
+        var database: OpaquePointer?
+        let openResult = databaseURL.path.withCString { path in
+            sqlite3_open(path, &database)
+        }
+        guard openResult == SQLITE_OK, let database else {
+            throw CheckFailure.expected("The SQLite fixture database must open")
+        }
+        defer { sqlite3_close(database) }
+
+        let schema = """
+            CREATE TABLE memories (
+                id TEXT PRIMARY KEY,
+                ended_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                memory_json TEXT NOT NULL
+            );
+            """
+        guard sqlite3_exec(database, schema, nil, nil, nil) == SQLITE_OK else {
+            throw CheckFailure.expected("The SQLite fixture schema must be created")
+        }
+
+        let payload = """
+            {"id":"live-checkpoint","endedAt":"2026-09-12T10:00:00Z","project":"continue.ai","currentTask":"Connecting the live adapters","summary":"The database adapter has a committed checkpoint.","lastAction":"Added the SQLite boundary","nextAction":"Start the voice session","resumeTargets":[{"type":"url","value":"https://example.com","label":"Example"}],"confidence":0.9,"sourceWindowMinutes":5}
+            """
+        let escapedPayload = payload.replacingOccurrences(of: "'", with: "''")
+        let insert = """
+            INSERT INTO memories (id, ended_at, created_at, memory_json)
+            VALUES ('live-checkpoint', '2026-09-12T10:00:00Z', '2026-09-12T10:00:00Z', '\(escapedPayload)');
+            """
+        guard sqlite3_exec(database, insert, nil, nil, nil) == SQLITE_OK else {
+            throw CheckFailure.expected("The SQLite fixture checkpoint must be inserted")
+        }
     }
 
     private static func expect(

@@ -42,6 +42,19 @@ plutil -insert NSHighResolutionCapable -bool true "$APP_INFO"
 plutil -insert NSMicrophoneUsageDescription -string \
     'Continue uses the microphone only after you start a voice conversation.' \
     "$APP_INFO"
+plutil -insert ContinueMemoryDatabasePath -string \
+    "$PACKAGE_ROOT/../../data/memory.sqlite" \
+    "$APP_INFO"
+if [[ -n "${CONTINUE_ELEVENLABS_AGENT_ID:-}" ]]; then
+    plutil -insert ContinueElevenLabsAgentID -string \
+        "$CONTINUE_ELEVENLABS_AGENT_ID" \
+        "$APP_INFO"
+fi
+if [[ -n "${CONTINUE_ELEVENLABS_TOKEN_URL:-}" ]]; then
+    plutil -insert ContinueElevenLabsTokenURL -string \
+        "$CONTINUE_ELEVENLABS_TOKEN_URL" \
+        "$APP_INFO"
+fi
 
 CONTROL_INFO="$CONTROL_BUNDLE/Contents/Info.plist"
 plutil -create xml1 "$CONTROL_INFO"
