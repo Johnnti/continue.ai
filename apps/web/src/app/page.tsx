@@ -14,9 +14,14 @@ export default async function Page() {
       <h1>continue.ai</h1>
       <p className="muted">Local-first context resume assistant</p>
       <ActivityStatus state="returning" />
+<<<<<<< HEAD
       <VoiceOrb />
       <RecordingControls />
       {checkpoint ? <SessionCard checkpoint={checkpoint} /> : <p className="muted">No activity profile has been captured yet.</p>}
+=======
+      <VoiceOrb checkpoint={checkpoint} />
+      <SessionCard checkpoint={checkpoint} />
+>>>>>>> main
       <ResumeButton />
       <PrivacyIndicator />
     </main>
