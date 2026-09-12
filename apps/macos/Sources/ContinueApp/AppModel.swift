@@ -12,7 +12,7 @@ final class AppModel: ObservableObject {
     )
     @Published private(set) var checkpoint: Checkpoint?
     @Published private(set) var history: [Checkpoint] = []
-    @Published private(set) var preferences = AppPreferences.previewDefaults
+    @Published private(set) var preferences: AppPreferences
     @Published private(set) var voice = VoiceSnapshot(
         state: .disconnected,
         levels: Array(repeating: 0.08, count: 16)
@@ -56,6 +56,7 @@ final class AppModel: ObservableObject {
         self.voiceProvider = voiceProvider
         self.resumeProvider = resumeProvider
         self.returnNotifier = returnNotifier
+        preferences = AppPreferencesStore.load()
     }
 
     func startMonitoring() {
@@ -152,7 +153,12 @@ final class AppModel: ObservableObject {
     }
 
     func markSteppingAway() {
-        guard preferences.interpretationEnabled, !isUpdatingRuntime else { return }
+        guard
+            preferences.captureEnabled,
+            preferences.interpretationEnabled,
+            preferences.checkpointTrigger.allowsManual,
+            !isUpdatingRuntime
+        else { return }
 
         Task {
             isUpdatingRuntime = true
@@ -250,18 +256,19 @@ final class AppModel: ObservableObject {
     func setInterpretationEnabled(_ isEnabled: Bool) {
         var updatedPreferences = preferences
         updatedPreferences.interpretationEnabled = isEnabled
-        preferences = updatedPreferences
+        updatePreferences(updatedPreferences)
+    }
 
-        Task {
-            await runtimeController.setSummariesEnabled(isEnabled)
-            await refreshRuntime(notifyOnReturn: false)
-        }
+    func setCaptureEnabled(_ isEnabled: Bool) {
+        var updatedPreferences = preferences
+        updatedPreferences.captureEnabled = isEnabled
+        updatePreferences(updatedPreferences)
     }
 
     func setVoiceBriefingsEnabled(_ isEnabled: Bool) {
         var updatedPreferences = preferences
         updatedPreferences.voiceBriefingsEnabled = isEnabled
-        preferences = updatedPreferences
+        updatePreferences(updatedPreferences)
 
         if !isEnabled {
             stopVoiceConversation()
@@ -271,14 +278,78 @@ final class AppModel: ObservableObject {
     func setIdleThreshold(minutes: Int) {
         var updatedPreferences = preferences
         updatedPreferences.idleThresholdMinutes = min(max(minutes, 1), 60)
-        preferences = updatedPreferences
+        updatePreferences(updatedPreferences)
     }
 
     func setCheckpointRetention(days: Int) {
-        guard [1, 7, 30].contains(days) else { return }
+        guard AppPreferences.checkpointRetentionOptions.contains(days) else { return }
         var updatedPreferences = preferences
         updatedPreferences.checkpointRetentionDays = days
+        updatePreferences(updatedPreferences)
+    }
+
+    func setObservationWindow(minutes: Int) {
+        var updatedPreferences = preferences
+        updatedPreferences.observationWindowMinutes = minutes
+        updatePreferences(updatedPreferences)
+    }
+
+    func setCheckpointTrigger(_ trigger: CheckpointTrigger) {
+        var updatedPreferences = preferences
+        updatedPreferences.checkpointTrigger = trigger
+        updatePreferences(updatedPreferences)
+    }
+
+    func setTrackingScheduleEnabled(_ isEnabled: Bool) {
+        var updatedPreferences = preferences
+        updatedPreferences.trackingSchedule.isEnabled = isEnabled
+        updatePreferences(updatedPreferences)
+    }
+
+    func setTrackingScheduleStart(hour: Int) {
+        var updatedPreferences = preferences
+        updatedPreferences.trackingSchedule.startHour = min(max(hour, 0), 23)
+        updatePreferences(updatedPreferences)
+    }
+
+    func setTrackingScheduleEnd(hour: Int) {
+        var updatedPreferences = preferences
+        updatedPreferences.trackingSchedule.endHour = min(max(hour, 0), 23)
+        updatePreferences(updatedPreferences)
+    }
+
+    func addExcludedApplication(_ application: String) {
+        let normalized = AppPreferences.normalizedApplications(
+            preferences.excludedApplications + [application]
+        )
+        guard normalized.count != preferences.excludedApplications.count else { return }
+
+        var updatedPreferences = preferences
+        updatedPreferences.excludedApplications = normalized
+        updatePreferences(updatedPreferences)
+    }
+
+    func removeExcludedApplication(_ application: String) {
+        var updatedPreferences = preferences
+        updatedPreferences.excludedApplications.removeAll { $0 == application }
+        updatePreferences(updatedPreferences)
+    }
+
+    func setScreenpipeRetention(days: Int) {
+        var updatedPreferences = preferences
+        updatedPreferences.screenpipeRetentionDays = days
+        updatePreferences(updatedPreferences)
+    }
+
+    private func updatePreferences(_ updatedPreferences: AppPreferences) {
         preferences = updatedPreferences
+        AppPreferencesStore.save(updatedPreferences)
+
+        let policy = ActivityTrackingPolicy(preferences: updatedPreferences)
+        Task {
+            await runtimeController.updateTrackingPolicy(policy)
+            await refreshRuntime(notifyOnReturn: false)
+        }
     }
 
     private func refreshRuntime(notifyOnReturn: Bool) async {

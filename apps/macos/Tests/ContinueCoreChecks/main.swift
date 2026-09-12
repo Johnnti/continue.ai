@@ -32,8 +32,14 @@ struct ContinueCoreChecks {
         try await runtimeControllerMarksManualAwayWithoutStoppingCapture()
         try checkpointNextStepCanBeCorrectedWithoutChangingEvidence()
         try returnNotificationRequiresOneEnabledAwayToReturnTransition()
+        try trackingScheduleHonorsWindow()
+        try checkpointTriggerLimitsManualAndAutomatic()
+        try preferencesNormalizeOptionsAndApplications()
+        try preferencesPersistThroughStore()
+        try appPreferencesDecodeLegacyPayload()
+        try await runtimeControllerAppliesTrackingPolicy()
 
-        print("ContinueCoreChecks: 17 checks passed")
+        print("ContinueCoreChecks: 23 checks passed")
     }
 
     private static func checkpointContractRoundTripsThroughJSON() throws {
@@ -256,6 +262,183 @@ struct ContinueCoreChecks {
                 summariesEnabled: false
             ),
             "Paused summaries must suppress return notifications"
+        )
+    }
+
+    private static func trackingScheduleHonorsWindow() throws {
+        try expect(
+            TrackingSchedule.allDay.contains(hour: 3),
+            "A disabled schedule must include every hour"
+        )
+
+        let workday = TrackingSchedule(isEnabled: true, startHour: 9, endHour: 17)
+        try expect(workday.contains(hour: 9), "The schedule must include its start hour")
+        try expect(workday.contains(hour: 16), "The schedule must include hours before its end")
+        try expect(!workday.contains(hour: 17), "The schedule must exclude its end hour")
+        try expect(!workday.contains(hour: 8), "The schedule must exclude hours before its start")
+        try expect(workday.displayRange == "9 AM–5 PM", "The display range must format both hours")
+
+        let overnight = TrackingSchedule(isEnabled: true, startHour: 22, endHour: 6)
+        try expect(overnight.contains(hour: 23), "An overnight schedule must include late hours")
+        try expect(overnight.contains(hour: 5), "An overnight schedule must include early hours")
+        try expect(!overnight.contains(hour: 12), "An overnight schedule must exclude midday")
+
+        let degenerate = TrackingSchedule(isEnabled: true, startHour: 12, endHour: 12)
+        try expect(degenerate.contains(hour: 4), "Equal start and end hours must include every hour")
+
+        let clamped = TrackingSchedule(isEnabled: true, startHour: -3, endHour: 42)
+        try expect(clamped.startHour == 0, "Schedule hours must clamp to the start of the day")
+        try expect(clamped.endHour == 23, "Schedule hours must clamp to the end of the day")
+    }
+
+    private static func checkpointTriggerLimitsManualAndAutomatic() throws {
+        try expect(
+            CheckpointTrigger.automatic.allowsAutomatic,
+            "The automatic trigger must allow automatic checkpoints"
+        )
+        try expect(
+            !CheckpointTrigger.automatic.allowsManual,
+            "The automatic trigger must reject manual away mode"
+        )
+        try expect(
+            CheckpointTrigger.manual.allowsManual,
+            "The manual trigger must allow manual away mode"
+        )
+        try expect(
+            !CheckpointTrigger.manual.allowsAutomatic,
+            "The manual trigger must reject automatic checkpoints"
+        )
+        try expect(
+            CheckpointTrigger.automaticAndManual.allowsAutomatic
+                && CheckpointTrigger.automaticAndManual.allowsManual,
+            "The combined trigger must allow both checkpoint paths"
+        )
+    }
+
+    private static func preferencesNormalizeOptionsAndApplications() throws {
+        let preferences = AppPreferences(
+            interpretationEnabled: true,
+            voiceBriefingsEnabled: true,
+            idleThresholdMinutes: 90,
+            checkpointRetentionDays: 12,
+            observationWindowMinutes: 7,
+            excludedApplications: [" Messages ", "messages", "", "  ", "Mail"]
+        )
+
+        try expect(
+            preferences.idleThresholdMinutes == 60,
+            "The away threshold must clamp to 60 minutes"
+        )
+        try expect(
+            preferences.checkpointRetentionDays == 7,
+            "Unknown checkpoint retention must fall back to 7 days"
+        )
+        try expect(
+            preferences.observationWindowMinutes == 5,
+            "The observation window must snap to the nearest option"
+        )
+        try expect(
+            preferences.excludedApplications == ["Messages", "Mail"],
+            "Exclusions must trim, drop empty entries, and deduplicate case-insensitively"
+        )
+        try expect(
+            preferences.screenpipeRetentionDays == 0,
+            "Unknown Screenpipe retention must fall back to Screenpipe-managed"
+        )
+    }
+
+    private static func preferencesPersistThroughStore() throws {
+        let suiteName = "ContinueCoreChecks.preferences"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            throw CheckFailure.expected("A UserDefaults suite must be available for the store check")
+        }
+        defer {
+            AppPreferencesStore.remove(from: defaults)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        var preferences = AppPreferences.previewDefaults
+        preferences.captureEnabled = false
+        preferences.observationWindowMinutes = 15
+        preferences.checkpointTrigger = .manual
+        preferences.trackingSchedule = TrackingSchedule(isEnabled: true, startHour: 9, endHour: 17)
+        preferences.excludedApplications = ["Messages"]
+
+        AppPreferencesStore.save(preferences, to: defaults)
+
+        try expect(
+            AppPreferencesStore.load(from: defaults) == preferences,
+            "Saved preferences must reload without changes"
+        )
+
+        AppPreferencesStore.remove(from: defaults)
+        try expect(
+            AppPreferencesStore.load(from: defaults) == .previewDefaults,
+            "Removing stored preferences must restore the conservative defaults"
+        )
+    }
+
+    private static func appPreferencesDecodeLegacyPayload() throws {
+        let legacy = """
+        {"interpretationEnabled":false,"voiceBriefingsEnabled":false,\
+        "idleThresholdMinutes":9,"checkpointRetentionDays":30}
+        """
+        let decoded = try JSONDecoder().decode(AppPreferences.self, from: Data(legacy.utf8))
+
+        try expect(decoded.captureEnabled, "Legacy payloads must default capture to enabled")
+        try expect(!decoded.interpretationEnabled, "Legacy payloads must retain stored values")
+        try expect(decoded.idleThresholdMinutes == 9, "Legacy payloads must retain the threshold")
+        try expect(
+            decoded.observationWindowMinutes == 30,
+            "Legacy payloads must default the observation window"
+        )
+        try expect(
+            decoded.checkpointTrigger == .automaticAndManual,
+            "Legacy payloads must default the checkpoint trigger"
+        )
+        try expect(decoded.trackingSchedule == .allDay, "Legacy payloads must default the schedule")
+        try expect(decoded.excludedApplications.isEmpty, "Legacy payloads must default exclusions")
+        try expect(
+            decoded.screenpipeRetentionDays == 0,
+            "Legacy payloads must default Screenpipe retention"
+        )
+    }
+
+    private static func runtimeControllerAppliesTrackingPolicy() async throws {
+        let provider = PreviewRuntimeProvider()
+
+        await provider.setCaptureEnabled(false)
+        let paused = await provider.snapshot()
+        try expect(paused.captureStatus == .paused, "Disabling capture must pause Screenpipe")
+        try expect(paused.phase == .observing, "Disabling capture must leave the away phase")
+
+        var preferences = AppPreferences.previewDefaults
+        preferences.captureEnabled = true
+        preferences.trackingSchedule = TrackingSchedule(isEnabled: true, startHour: 9, endHour: 17)
+        let policy = ActivityTrackingPolicy(preferences: preferences)
+
+        await provider.updateTrackingPolicy(policy)
+        let scheduled = await provider.snapshot()
+        try expect(
+            scheduled.captureStatus == .recording,
+            "Re-enabling capture must resume Screenpipe recording"
+        )
+        try expect(
+            scheduled.statusMessage.contains("9 AM–5 PM"),
+            "An enabled schedule must surface its display range"
+        )
+        let appliedPolicy = await provider.currentTrackingPolicy()
+        try expect(
+            appliedPolicy == policy,
+            "The runtime must retain the applied tracking policy"
+        )
+
+        await provider.setSummariesEnabled(false)
+        await provider.markSteppingAway()
+        let suppressed = await provider.snapshot()
+        try expect(
+            suppressed.phase != .away,
+            "Manual away must be ignored while summaries are paused"
         )
     }
 

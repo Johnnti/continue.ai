@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    @State private var newExcludedApplication = ""
 
     var body: some View {
         ScrollView {
@@ -20,7 +21,7 @@ struct SettingsView: View {
                 privacySection
 
                 Label(
-                    "Hackathon build: these preferences remain in memory until the app quits.",
+                    "Preferences are saved on this Mac and restored the next time Continue opens.",
                     systemImage: "info.circle"
                 )
                 .font(.caption)
@@ -42,6 +43,15 @@ struct SettingsView: View {
             systemImage: "rectangle.on.rectangle"
         ) {
             Toggle(
+                "Record activity with Screenpipe",
+                isOn: Binding(
+                    get: { model.preferences.captureEnabled },
+                    set: { model.setCaptureEnabled($0) }
+                )
+            )
+            .accessibilityIdentifier("settings.capture")
+
+            Toggle(
                 "Create return summaries from Screenpipe",
                 isOn: Binding(
                     get: { model.preferences.interpretationEnabled },
@@ -59,6 +69,78 @@ struct SettingsView: View {
                 in: 1...60,
                 step: 1
             )
+
+            Picker(
+                "Create checkpoints",
+                selection: Binding(
+                    get: { model.preferences.checkpointTrigger },
+                    set: { model.setCheckpointTrigger($0) }
+                )
+            ) {
+                ForEach(CheckpointTrigger.allCases, id: \.self) { trigger in
+                    Text(trigger.title).tag(trigger)
+                }
+            }
+            .accessibilityIdentifier("settings.checkpoint-trigger")
+
+            Text(model.preferences.checkpointTrigger.description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Toggle(
+                "Limit Screenpipe capture to a schedule",
+                isOn: Binding(
+                    get: { model.preferences.trackingSchedule.isEnabled },
+                    set: { model.setTrackingScheduleEnabled($0) }
+                )
+            )
+            .accessibilityIdentifier("settings.tracking-schedule")
+
+            if model.preferences.trackingSchedule.isEnabled {
+                HStack {
+                    Picker(
+                        "Start",
+                        selection: Binding(
+                            get: { model.preferences.trackingSchedule.startHour },
+                            set: { model.setTrackingScheduleStart(hour: $0) }
+                        )
+                    ) {
+                        ForEach(0..<24, id: \.self) { hour in
+                            Text(TrackingSchedule.hourLabel(hour)).tag(hour)
+                        }
+                    }
+
+                    Picker(
+                        "End",
+                        selection: Binding(
+                            get: { model.preferences.trackingSchedule.endHour },
+                            set: { model.setTrackingScheduleEnd(hour: $0) }
+                        )
+                    ) {
+                        ForEach(0..<24, id: \.self) { hour in
+                            Text(TrackingSchedule.hourLabel(hour)).tag(hour)
+                        }
+                    }
+                }
+
+                Text("Continue tracks activity between \(model.preferences.trackingSchedule.displayRange).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Picker(
+                "Observation window",
+                selection: Binding(
+                    get: { model.preferences.observationWindowMinutes },
+                    set: { model.setObservationWindow(minutes: $0) }
+                )
+            ) {
+                ForEach(AppPreferences.observationWindowOptions, id: \.self) { minutes in
+                    Text("\(minutes) min").tag(minutes)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.observation-window")
 
             HStack {
                 Label("Screenpipe recording", systemImage: captureStatusIcon)
@@ -155,6 +237,65 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
             .accessibilityIdentifier("settings.checkpoint-retention")
 
+            Picker(
+                "Keep Screenpipe raw data",
+                selection: Binding(
+                    get: { model.preferences.screenpipeRetentionDays },
+                    set: { model.setScreenpipeRetention(days: $0) }
+                )
+            ) {
+                Text("Screenpipe manages").tag(0)
+                Text("1 day").tag(1)
+                Text("7 days").tag(7)
+                Text("30 days").tag(30)
+            }
+            .accessibilityIdentifier("settings.screenpipe-retention")
+
+            Label(
+                "Continue never copies raw screen or audio data into its own store.",
+                systemImage: "info.circle"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Excluded applications")
+                    .font(.subheadline.weight(.semibold))
+
+                HStack {
+                    TextField("Application name", text: $newExcludedApplication)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(addExcludedApplication)
+
+                    Button("Add", action: addExcludedApplication)
+                        .disabled(
+                            newExcludedApplication
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                                .isEmpty
+                        )
+                }
+
+                if model.preferences.excludedApplications.isEmpty {
+                    Text("No applications are excluded from summaries.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.preferences.excludedApplications, id: \.self) { application in
+                        HStack {
+                            Label(application, systemImage: "app.dashed")
+                            Spacer()
+                            Button("Remove", systemImage: "minus.circle") {
+                                model.removeExcludedApplication(application)
+                            }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.borderless)
+                        }
+                        .font(.subheadline)
+                    }
+                }
+            }
+            .accessibilityIdentifier("settings.excluded-applications")
+
             Label(
                 "Continue never switches apps or reopens items automatically.",
                 systemImage: "hand.raised"
@@ -162,6 +303,11 @@ struct SettingsView: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
+    }
+
+    private func addExcludedApplication() {
+        model.addExcludedApplication(newExcludedApplication)
+        newExcludedApplication = ""
     }
 
     private var captureStatusIcon: String {

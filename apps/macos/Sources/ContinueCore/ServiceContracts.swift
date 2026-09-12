@@ -11,7 +11,9 @@ public protocol RuntimeProviding: Sendable {
 
 public protocol RuntimeControlling: Sendable {
     func markSteppingAway() async
+    func setCaptureEnabled(_ isEnabled: Bool) async
     func setSummariesEnabled(_ isEnabled: Bool) async
+    func updateTrackingPolicy(_ policy: ActivityTrackingPolicy) async
 }
 
 public protocol CheckpointProviding: Sendable {

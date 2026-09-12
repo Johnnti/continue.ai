@@ -45,7 +45,7 @@ swift build --package-path apps/macos --product ContinueApp
 # Build and validate the Control Center extension without opening the app.
 apps/macos/scripts/run-app.sh --no-open
 
-# Run the deterministic core checks (17 checks at the time of writing).
+# Run the deterministic core checks (23 checks at the time of writing).
 swift run --package-path apps/macos ContinueCoreChecks
 
 # Run Swift checks, build with warnings-as-errors, then run workspace checks.
@@ -62,6 +62,31 @@ To open the package in Xcode for previews or signing work:
 ```bash
 open apps/macos/Package.swift
 ```
+
+## Configure local policies
+
+Settings are saved in `UserDefaults` under `continue.app-preferences.v1` and
+restored the next time Continue opens. The preview exposes:
+
+- **Record activity with Screenpipe** and **Create return summaries** as
+  separate switches, so pausing summaries never stops raw capture.
+- **Create checkpoints** to choose automatic checkpoints, manual **I'm stepping
+  away** checkpoints, or both.
+- **Away threshold** from 1 to 60 minutes before a return counts as a
+  checkpoint-worthy break.
+- **Tracking schedule** to limit activity to a daily window, including windows
+  that cross midnight.
+- **Observation window** of 5, 15, 30, or 60 minutes of source context for a
+  summary.
+- **Excluded applications** that are trimmed, deduplicated case-insensitively,
+  and skipped when summaries are created.
+- **Checkpoint retention** of 1, 7, or 30 days for interpreted summaries.
+- **Screenpipe raw-data retention**, where **Screenpipe manages** is the
+  default; Continue keeps only its own interpreted checkpoints.
+- **Voice conversations** enabled or disabled separately from capture.
+
+Older saved payloads are decoded with conservative defaults for any preference
+that does not exist yet, so upgrades do not reset the controls a person set.
 
 ## Add the Control Center button
 
