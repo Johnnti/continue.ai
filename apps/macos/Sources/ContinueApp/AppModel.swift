@@ -11,6 +11,8 @@ final class AppModel: ObservableObject {
         lastActivityAt: nil
     )
     @Published private(set) var checkpoint: Checkpoint?
+    @Published private(set) var history: [Checkpoint] = []
+    @Published private(set) var preferences = AppPreferences.previewDefaults
     @Published private(set) var voice = VoiceSnapshot(
         state: .disconnected,
         levels: Array(repeating: 0.08, count: 16)
@@ -18,6 +20,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isVoiceTransitioning = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var historyErrorMessage: String?
     @Published private(set) var voiceErrorMessage: String?
     @Published private(set) var resumePreview: ResumePreview?
     @Published private(set) var resumeSelection = ResumeSelection(targets: [])
@@ -48,6 +51,7 @@ final class AppModel: ObservableObject {
 
         isLoading = true
         errorMessage = nil
+        historyErrorMessage = nil
         runtime = await runtimeProvider.snapshot()
         voice = await voiceProvider.snapshot()
 
@@ -55,6 +59,12 @@ final class AppModel: ObservableObject {
             checkpoint = try await checkpointProvider.latest()
         } catch {
             errorMessage = "Continue could not load the latest checkpoint."
+        }
+
+        do {
+            history = try await checkpointProvider.history(limit: 20)
+        } catch {
+            historyErrorMessage = "Continue could not load checkpoint history."
         }
 
         isLoading = false
@@ -156,5 +166,34 @@ final class AppModel: ObservableObject {
         resumePreview = nil
         resumeResults = []
         resumeErrorMessage = nil
+    }
+
+    func setInterpretationEnabled(_ isEnabled: Bool) {
+        var updatedPreferences = preferences
+        updatedPreferences.interpretationEnabled = isEnabled
+        preferences = updatedPreferences
+    }
+
+    func setVoiceBriefingsEnabled(_ isEnabled: Bool) {
+        var updatedPreferences = preferences
+        updatedPreferences.voiceBriefingsEnabled = isEnabled
+        preferences = updatedPreferences
+
+        if !isEnabled {
+            stopVoiceBriefing()
+        }
+    }
+
+    func setIdleThreshold(minutes: Int) {
+        var updatedPreferences = preferences
+        updatedPreferences.idleThresholdMinutes = min(max(minutes, 5), 60)
+        preferences = updatedPreferences
+    }
+
+    func setCheckpointRetention(days: Int) {
+        guard [1, 7, 30].contains(days) else { return }
+        var updatedPreferences = preferences
+        updatedPreferences.checkpointRetentionDays = days
+        preferences = updatedPreferences
     }
 }

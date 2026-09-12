@@ -19,8 +19,8 @@ struct ContinueDesktopApp: App {
         .windowStyle(.hiddenTitleBar)
 
         Settings {
-            Text("Continue settings are available in the main window.")
-                .frame(width: 420, height: 240)
+            SettingsView(model: model)
+                .frame(width: 620, height: 580)
         }
     }
 }

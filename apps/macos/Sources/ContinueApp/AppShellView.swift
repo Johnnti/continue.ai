@@ -46,31 +46,9 @@ struct AppShellView: View {
         case .now:
             NowView(model: model)
         case .history:
-            PlaceholderView(
-                title: "History",
-                message: "Past work checkpoints will appear here.",
-                systemImage: "clock.arrow.circlepath"
-            )
+            HistoryView(model: model)
         case .settings:
-            PlaceholderView(
-                title: "Settings",
-                message: "Capture, voice, and privacy controls will appear here.",
-                systemImage: "gearshape"
-            )
+            SettingsView(model: model)
         }
-    }
-}
-
-private struct PlaceholderView: View {
-    let title: String
-    let message: String
-    let systemImage: String
-
-    var body: some View {
-        ContentUnavailableView(
-            title,
-            systemImage: systemImage,
-            description: Text(message)
-        )
     }
 }

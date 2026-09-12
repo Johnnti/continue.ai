@@ -24,8 +24,9 @@ struct ContinueCoreChecks {
         try waveformMathClampsInputLevels()
         try resumeSelectionRejectsUnknownIdentifiers()
         try await resumeProviderRejectsUnknownCheckpoints()
+        try previewPreferencesExposeConservativeDefaults()
 
-        print("ContinueCoreChecks: 9 checks passed")
+        print("ContinueCoreChecks: 10 checks passed")
     }
 
     private static func checkpointContractRoundTripsThroughJSON() throws {
@@ -128,6 +129,15 @@ struct ContinueCoreChecks {
         } catch ContinueServiceError.checkpointNotFound {
             return
         }
+    }
+
+    private static func previewPreferencesExposeConservativeDefaults() throws {
+        let preferences = AppPreferences.previewDefaults
+
+        try expect(preferences.interpretationEnabled, "Preview interpretation must be visible by default")
+        try expect(preferences.voiceBriefingsEnabled, "Voice briefing control must start enabled")
+        try expect(preferences.idleThresholdMinutes == 15, "Default idle threshold must be 15 minutes")
+        try expect(preferences.checkpointRetentionDays == 7, "Default checkpoint retention must be 7 days")
     }
 
     private static func expect(
