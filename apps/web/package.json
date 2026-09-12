@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:service": "next dev --hostname ${CONTINUE_SERVICE_HOST:-127.0.0.1} --port ${CONTINUE_SERVICE_PORT:-3000}",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -13,9 +14,8 @@
     "@continue/context-engine": "workspace:*",
     "@continue/memory": "workspace:*",
     "@continue/shared": "workspace:*",
-    "@continue/voice": "workspace:*",
     "@continue/workspace": "workspace:*",
-    "@elevenlabs/react": "^1.15.2",
+    "@next/env": "15.0.0",
     "next": "15.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

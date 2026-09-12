@@ -1,30 +1,29 @@
 import Foundation
 
 public struct ContinueIntegrationConfiguration: Sendable {
-    public static let defaultPublicAgentID = "agent_6701m2aempkqeh7a0922tc0b0krr"
-
     public let memoryDatabaseURL: URL
-    public let elevenLabsAgentID: String?
-    public let elevenLabsTokenURL: URL?
-    public let elevenLabsUserID: String?
+    public let elevenLabsSpeechURL: URL
+    public let chatURL: URL
+    public let backendURL: URL
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         memoryDatabaseURL = Self.resolveMemoryDatabaseURL(environment: environment)
-        elevenLabsAgentID = Self.value(
-            forKeys: ["CONTINUE_ELEVENLABS_AGENT_ID", "ELEVENLABS_AGENT_ID"],
-            in: environment
-        ) ?? Self.bundleValue(forKey: "ContinueElevenLabsAgentID") ?? Self.defaultPublicAgentID
-        elevenLabsTokenURL = Self.value(
-            forKeys: ["CONTINUE_ELEVENLABS_TOKEN_URL"],
+        elevenLabsSpeechURL = Self.value(
+            forKeys: ["CONTINUE_ELEVENLABS_SPEECH_URL"],
             in: environment
         )
         .flatMap(URL.init(string:))
-            ?? Self.bundleValue(forKey: "ContinueElevenLabsTokenURL")
+            ?? Self.bundleValue(forKey: "ContinueElevenLabsSpeechURL")
                 .flatMap(URL.init(string:))
-        elevenLabsUserID = Self.value(
-            forKeys: ["CONTINUE_ELEVENLABS_USER_ID", "ELEVENLABS_USER_ID"],
-            in: environment
-        )
+            ?? URL(string: "http://localhost:3000/api/voice/speak")!
+        chatURL = Self.value(forKeys: ["CONTINUE_CHAT_URL"], in: environment)
+            .flatMap(URL.init(string:))
+            ?? Self.bundleValue(forKey: "ContinueChatURL").flatMap(URL.init(string:))
+            ?? URL(string: "http://localhost:3000/api/chat")!
+        backendURL = Self.value(forKeys: ["CONTINUE_BACKEND_URL"], in: environment)
+            .flatMap(URL.init(string:))
+            ?? Self.bundleValue(forKey: "ContinueBackendURL").flatMap(URL.init(string:))
+            ?? URL(string: "http://localhost:3000")!
     }
 
     private static func value(

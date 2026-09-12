@@ -491,9 +491,9 @@ struct ContinueCoreChecks {
     private static func integrationConfigurationHonorsOverrides() throws {
         let configuration = ContinueIntegrationConfiguration(environment: [
             "CONTINUE_MEMORY_DATABASE_PATH": "/tmp/continue-checks.sqlite",
-            "CONTINUE_ELEVENLABS_AGENT_ID": "agent_test",
-            "CONTINUE_ELEVENLABS_TOKEN_URL": "https://localhost/token",
-            "CONTINUE_ELEVENLABS_USER_ID": "continue-checks"
+            "CONTINUE_ELEVENLABS_SPEECH_URL": "http://localhost:4040/speak",
+            "CONTINUE_CHAT_URL": "http://localhost:4040/chat",
+            "CONTINUE_BACKEND_URL": "http://localhost:4040"
         ])
 
         try expect(
@@ -501,16 +501,16 @@ struct ContinueCoreChecks {
             "The database path must be configurable without changing source code"
         )
         try expect(
-            configuration.elevenLabsAgentID == "agent_test",
-            "The ElevenLabs agent ID must be configurable"
+            configuration.elevenLabsSpeechURL.absoluteString == "http://localhost:4040/speak",
+            "The native speech endpoint must be configurable"
         )
         try expect(
-            configuration.elevenLabsTokenURL?.absoluteString == "https://localhost/token",
-            "The private-agent token endpoint must be configurable"
+            configuration.chatURL.absoluteString == "http://localhost:4040/chat",
+            "The native chat endpoint must be configurable"
         )
         try expect(
-            configuration.elevenLabsUserID == "continue-checks",
-            "The ElevenLabs user ID must be configurable"
+            configuration.backendURL.absoluteString == "http://localhost:4040",
+            "The headless local service URL must be configurable"
         )
     }
 

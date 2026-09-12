@@ -1,40 +1,39 @@
+import AVFoundation
 import ContinueCore
-import ElevenLabs
 import Foundation
 
 enum ElevenLabsVoiceError: LocalizedError, Sendable {
-    case missingAgentConfiguration
-    case invalidTokenResponse
-    case tokenRequestFailed(String)
+    case invalidResponse
+    case requestFailed(String)
+    case playbackFailed
 
     var errorDescription: String? {
         switch self {
-        case .missingAgentConfiguration:
-            "ElevenLabs is not configured with a public agent or token endpoint."
-        case .invalidTokenResponse:
-            "The ElevenLabs token service returned no conversation token."
-        case let .tokenRequestFailed(message):
-            "The ElevenLabs token service failed: \(message)"
+        case .invalidResponse:
+            "The Continue voice service returned an invalid audio response."
+        case let .requestFailed(message):
+            "The Continue voice service failed: \(message)"
+        case .playbackFailed:
+            "The generated recap could not be played."
         }
     }
 }
 
-final class ElevenLabsVoiceProvider: VoiceProviding, @unchecked Sendable {
+/// Reads a completed checkpoint through the same server-side ElevenLabs TTS
+/// endpoint as the web app, keeping the API key out of the application bundle.
+final class ElevenLabsVoiceProvider: NSObject, VoiceProviding, AVAudioPlayerDelegate, @unchecked Sendable {
     private let configuration: ContinueIntegrationConfiguration
-    private let checkpointProvider: any CheckpointProviding
-    private var conversation: Conversation?
+    private var player: AVAudioPlayer?
     private var currentSnapshot = VoiceSnapshot(
         state: .disconnected,
         levels: Array(repeating: 0.08, count: 16)
     )
-    private var resumeRequestHandler: ResumeRequestHandler?
 
     init(
         configuration: ContinueIntegrationConfiguration,
-        checkpointProvider: any CheckpointProviding
+        checkpointProvider _: any CheckpointProviding
     ) {
         self.configuration = configuration
-        self.checkpointProvider = checkpointProvider
     }
 
     func snapshot() async -> VoiceSnapshot {
@@ -45,237 +44,93 @@ final class ElevenLabsVoiceProvider: VoiceProviding, @unchecked Sendable {
         await setSnapshot(
             VoiceSnapshot(
                 state: .connecting,
-                levels: Array(repeating: 0.12, count: 16)
+                levels: Array(repeating: 0.16, count: 16)
             )
         )
 
-        let checkpoint = try? await checkpointProvider.latest()
-        let config = ConversationConfig(
-            dynamicVariables: dynamicVariables(for: checkpoint),
-            userId: configuration.elevenLabsUserID,
-            onDisconnect: { [weak self] _ in
-                Task { await self?.setDisconnected() }
-            },
-            onError: { [weak self] error in
-                Task { await self?.setFailed(error.localizedDescription) }
-            },
-            onVadScore: { [weak self] score in
-                Task { await self?.setVadScore(score) }
-            },
-            onUnhandledClientToolCall: { [weak self] toolCall in
-                Task { await self?.handleClientToolCall(toolCall) }
-            },
-            onAgentStateChange: { [weak self] state in
-                Task { @MainActor in
-                    self?.setAgentState(state)
-                }
+        var request = URLRequest(url: configuration.elevenLabsSpeechURL)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(SpeechRequest(text: briefing))
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw ElevenLabsVoiceError.invalidResponse
             }
-        )
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                let payload = try? JSONDecoder().decode(ErrorResponse.self, from: data)
+                throw ElevenLabsVoiceError.requestFailed(
+                    payload?.error ?? "HTTP \(httpResponse.statusCode)"
+                )
+            }
 
-        let activeConversation = try await startConversation(with: config)
-        await MainActor.run {
-            conversation = activeConversation
-            setAgentState(activeConversation.agentState)
+            let audioPlayer = try AVAudioPlayer(data: data)
+            audioPlayer.delegate = self
+            audioPlayer.prepareToPlay()
+            guard audioPlayer.play() else {
+                throw ElevenLabsVoiceError.playbackFailed
+            }
+
+            await MainActor.run {
+                player?.stop()
+                player = audioPlayer
+                currentSnapshot = VoiceSnapshot(
+                    state: .speaking,
+                    levels: Array(repeating: 0.62, count: 16)
+                )
+            }
+        } catch let error as ElevenLabsVoiceError {
+            await setFailed(error.localizedDescription)
+            throw error
+        } catch {
+            let wrapped = ElevenLabsVoiceError.requestFailed(error.localizedDescription)
+            await setFailed(wrapped.localizedDescription)
+            throw wrapped
         }
-
-        try await activeConversation.sendMessage(briefing)
     }
 
     func stop() async {
-        let activeConversation = await MainActor.run { () -> Conversation? in
-            let activeConversation = conversation
-            conversation = nil
+        await MainActor.run {
+            player?.stop()
+            player = nil
             currentSnapshot = VoiceSnapshot(
                 state: .disconnected,
                 levels: Array(repeating: 0.08, count: 16)
             )
-            return activeConversation
-        }
-        await activeConversation?.endConversation()
-    }
-
-    func setResumeRequestHandler(_ handler: ResumeRequestHandler?) async {
-        await MainActor.run {
-            resumeRequestHandler = handler
         }
     }
 
-    private func startConversation(with config: ConversationConfig) async throws -> Conversation {
-        if let tokenURL = configuration.elevenLabsTokenURL {
-            let token = try await fetchConversationToken(from: tokenURL)
-            return try await ElevenLabs.startConversation(
-                conversationToken: token,
-                config: config
-            )
-        }
+    func setResumeRequestHandler(_: ResumeRequestHandler?) async {}
 
-        guard let agentID = configuration.elevenLabsAgentID else {
-            throw ElevenLabsVoiceError.missingAgentConfiguration
-        }
-
-        return try await ElevenLabs.startConversation(
-            agentId: agentID,
-            config: config
-        )
+    func audioPlayerDidFinishPlaying(_: AVAudioPlayer, successfully _: Bool) {
+        Task { await stop() }
     }
 
-    private func fetchConversationToken(from url: URL) async throws -> String {
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 10
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200..<300).contains(httpResponse.statusCode)
-            else {
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                throw ElevenLabsVoiceError.tokenRequestFailed("HTTP \(statusCode)")
-            }
-
-            let payload = try JSONDecoder().decode(TokenResponse.self, from: data)
-            guard let token = payload.token ?? payload.conversationToken,
-                  !token.isEmpty
-            else {
-                throw ElevenLabsVoiceError.invalidTokenResponse
-            }
-            return token
-        } catch let error as ElevenLabsVoiceError {
-            throw error
-        } catch {
-            throw ElevenLabsVoiceError.tokenRequestFailed(error.localizedDescription)
-        }
-    }
-
-    private func dynamicVariables(for checkpoint: Checkpoint?) -> [String: String] {
-        [
-            "checkpoint_id": checkpoint?.id ?? "",
-            "project": checkpoint?.project ?? "Continue",
-            "task": checkpoint?.headline ?? "your previous task",
-            "last_action": checkpoint?.completed.last ?? "working on your computer",
-            "next_action": checkpoint?.nextSteps.first ?? "continue where you left off"
-        ]
-    }
-
-    private func handleClientToolCall(_ toolCall: ClientToolCallEvent) async {
-        let checkpoint = try? await checkpointProvider.latest()
-        let result: [String: String]
-
-        switch toolCall.toolName {
-        case "get_last_session", "get_session_context":
-            result = checkpointPayload(checkpoint, includeEvidence: toolCall.toolName == "get_session_context")
-        case "request_resume_workspace":
-            result = [
-                "status": "confirmation_required",
-                "message": "The local approval sheet will be shown before anything is opened."
-            ]
-            let handler = await MainActor.run { resumeRequestHandler }
-            await MainActor.run { handler?() }
-        default:
-            result = [
-                "status": "error",
-                "message": "Unknown Continue client tool."
-            ]
-        }
-
-        let activeConversation = await MainActor.run { conversation }
-        guard let activeConversation else { return }
-        try? await activeConversation.sendToolResult(
-            for: toolCall.toolCallId,
-            result: result,
-            isError: result["status"] == "error"
-        )
-    }
-
-    private func checkpointPayload(
-        _ checkpoint: Checkpoint?,
-        includeEvidence: Bool
-    ) -> [String: String] {
-        guard let checkpoint else {
-            return [
-                "status": "empty",
-                "message": "No committed checkpoint is available yet."
-            ]
-        }
-
-        var payload = [
-            "status": "ok",
-            "checkpoint_id": checkpoint.id,
-            "project": checkpoint.project ?? "Continue",
-            "summary": checkpoint.summary,
-            "last_action": checkpoint.completed.last ?? "",
-            "next_action": checkpoint.nextSteps.first ?? "",
-            "confidence": checkpoint.confidence.rawValue,
-            "created_at": checkpoint.createdAt.ISO8601Format()
-        ]
-        if includeEvidence {
-            payload["evidence"] = checkpoint.evidence
-                .map(\.sourceLabel)
-                .joined(separator: ", ")
-        }
-        return payload
+    func audioPlayerDecodeErrorDidOccur(_: AVAudioPlayer, error: Error?) {
+        Task { await setFailed(error?.localizedDescription ?? "Audio decoding failed") }
     }
 
     private func setSnapshot(_ snapshot: VoiceSnapshot) async {
         await MainActor.run { currentSnapshot = snapshot }
     }
 
-    private func setDisconnected() async {
-        await setSnapshot(
-            VoiceSnapshot(
-                state: .disconnected,
-                levels: Array(repeating: 0.08, count: 16)
-            )
-        )
-    }
-
     private func setFailed(_ message: String) async {
-        await setSnapshot(
-            VoiceSnapshot(
+        await MainActor.run {
+            player = nil
+            currentSnapshot = VoiceSnapshot(
                 state: .failed(message: message),
                 levels: Array(repeating: 0.08, count: 16)
             )
-        )
-    }
-
-    private func setVadScore(_ score: Double) async {
-        let level = min(max(score, 0.08), 1)
-        await MainActor.run {
-            currentSnapshot = VoiceSnapshot(
-                state: currentSnapshot.state,
-                levels: Array(repeating: level, count: 16)
-            )
         }
-    }
-
-    @MainActor
-    private func setAgentState(_ state: ElevenLabs.AgentState) {
-        let voiceState: VoiceState
-        let level: Double
-        switch state {
-        case .listening:
-            voiceState = .listening
-            level = 0.14
-        case .speaking:
-            voiceState = .speaking
-            level = 0.62
-        case .thinking:
-            voiceState = .thinking
-            level = 0.28
-        }
-        currentSnapshot = VoiceSnapshot(
-            state: voiceState,
-            levels: Array(repeating: level, count: 16)
-        )
     }
 }
 
-private struct TokenResponse: Decodable {
-    let token: String?
-    let conversationToken: String?
+private struct SpeechRequest: Encodable {
+    let text: String
+}
 
-    private enum CodingKeys: String, CodingKey {
-        case token
-        case conversationToken = "conversation_token"
-    }
+private struct ErrorResponse: Decodable {
+    let error: String?
 }

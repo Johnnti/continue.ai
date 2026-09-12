@@ -2,6 +2,23 @@ import Combine
 import ContinueCore
 import Foundation
 
+struct ContinueChatMessage: Identifiable, Equatable, Codable {
+    enum Role: String, Codable {
+        case user
+        case assistant
+    }
+
+    let id: UUID
+    let role: Role
+    let content: String
+
+    init(id: UUID = UUID(), role: Role, content: String) {
+        self.id = id
+        self.role = role
+        self.content = content
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var runtime = RuntimeSnapshot(
@@ -22,6 +39,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var historyErrorMessage: String?
     @Published private(set) var voiceErrorMessage: String?
+    @Published private(set) var chatMessages: [ContinueChatMessage] = []
+    @Published private(set) var isChatResponding = false
+    @Published private(set) var chatErrorMessage: String?
     @Published private(set) var resumePreview: ResumePreview?
     @Published private(set) var resumeSelection = ResumeSelection(targets: [])
     @Published private(set) var resumeResults: [ResumeResult] = []
@@ -39,6 +59,7 @@ final class AppModel: ObservableObject {
     private let voiceProvider: any VoiceProviding
     private let resumeProvider: any ResumeProviding
     private let returnNotifier: any ReturnNotifying
+    private let chatURL: URL
     private var monitoringTask: Task<Void, Never>?
     private var dismissedCheckpointIDs: Set<String> = []
     private var checkpointEdits: [String: Checkpoint] = [:]
@@ -50,6 +71,7 @@ final class AppModel: ObservableObject {
         voiceProvider: any VoiceProviding,
         resumeProvider: any ResumeProviding,
         returnNotifier: any ReturnNotifying,
+        chatURL: URL = URL(string: "http://localhost:3000/api/chat")!,
         dataSourceLabel: String = "LIVE DATA"
     ) {
         self.runtimeProvider = runtimeProvider
@@ -58,6 +80,7 @@ final class AppModel: ObservableObject {
         self.voiceProvider = voiceProvider
         self.resumeProvider = resumeProvider
         self.returnNotifier = returnNotifier
+        self.chatURL = chatURL
         self.dataSourceLabel = dataSourceLabel
         preferences = AppPreferencesStore.load()
 
@@ -97,16 +120,7 @@ final class AppModel: ObservableObject {
         voice = await voiceProvider.snapshot()
         notificationAuthorization = await returnNotifier.authorizationStatus()
 
-        do {
-            if let latest = try await checkpointProvider.latest() {
-                let resolved = checkpointEdits[latest.id] ?? latest
-                checkpoint = dismissedCheckpointIDs.contains(latest.id) ? nil : resolved
-            } else {
-                checkpoint = nil
-            }
-        } catch {
-            errorMessage = "Continue could not load the latest checkpoint: \(error.localizedDescription)"
-        }
+        await reloadLatestCheckpoint()
 
         do {
             history = try await checkpointProvider.history(limit: 20).map {
@@ -159,6 +173,67 @@ final class AppModel: ObservableObject {
             await voiceProvider.stop()
             voice = await voiceProvider.snapshot()
             isVoiceTransitioning = false
+        }
+    }
+
+    func speakChatMessage(_ content: String) {
+        guard !isVoiceTransitioning else { return }
+        Task {
+            isVoiceTransitioning = true
+            voiceErrorMessage = nil
+            do {
+                try await voiceProvider.start(briefing: content)
+                voice = await voiceProvider.snapshot()
+            } catch {
+                voiceErrorMessage = error.localizedDescription
+                voice = VoiceSnapshot(
+                    state: .failed(message: error.localizedDescription),
+                    levels: voice.levels
+                )
+            }
+            isVoiceTransitioning = false
+        }
+    }
+
+    func sendChatMessage(_ content: String, speakReply: Bool = false) {
+        let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isChatResponding else { return }
+
+        chatMessages.append(ContinueChatMessage(role: .user, content: text))
+        chatErrorMessage = nil
+        isChatResponding = true
+
+        Task {
+            do {
+                var request = URLRequest(url: chatURL)
+                request.httpMethod = "POST"
+                request.timeoutInterval = 45
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONEncoder().encode(
+                    ChatRequest(
+                        messages: chatMessages.map {
+                            ChatRequest.Message(role: $0.role.rawValue, content: $0.content)
+                        }
+                    )
+                )
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw ChatError.invalidResponse
+                }
+                let payload = try JSONDecoder().decode(ChatResponse.self, from: data)
+                guard (200..<300).contains(httpResponse.statusCode), let reply = payload.reply else {
+                    throw ChatError.server(payload.error ?? "HTTP \(httpResponse.statusCode)")
+                }
+
+                chatMessages.append(ContinueChatMessage(role: .assistant, content: reply))
+                isChatResponding = false
+                if speakReply {
+                    speakChatMessage(reply)
+                }
+            } catch {
+                chatErrorMessage = error.localizedDescription
+                isChatResponding = false
+            }
         }
     }
 
@@ -270,9 +345,51 @@ final class AppModel: ObservableObject {
     }
 
     func setCaptureEnabled(_ isEnabled: Bool) {
+        guard !isUpdatingRuntime else { return }
+
         var updatedPreferences = preferences
         updatedPreferences.captureEnabled = isEnabled
-        updatePreferences(updatedPreferences)
+        preferences = updatedPreferences
+        AppPreferencesStore.save(updatedPreferences)
+        isUpdatingRuntime = true
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            defer { isUpdatingRuntime = false }
+
+            await runtimeController.setCaptureEnabled(isEnabled)
+            await refreshRuntime(notifyOnReturn: false)
+
+            // The backend is authoritative. Keep the preference aligned when
+            // it reports a concrete state, but preserve the requested value
+            // when the service is unavailable and its state is unknown.
+            if let actualCaptureEnabled = captureEnabled(in: runtime),
+               actualCaptureEnabled != preferences.captureEnabled {
+                var reconciledPreferences = preferences
+                reconciledPreferences.captureEnabled = actualCaptureEnabled
+                preferences = reconciledPreferences
+                AppPreferencesStore.save(reconciledPreferences)
+            }
+
+            if !isEnabled {
+                // Stopping Screenpipe can flush a final partial batch. Reload
+                // after the controller call instead of relying on the polling
+                // loop to notice a return transition.
+                await reloadLatestCheckpoint()
+            }
+        }
+    }
+
+    func toggleCapture() {
+        switch runtime.captureStatus {
+        case .recording:
+            setCaptureEnabled(false)
+        case .paused, .unavailable:
+            setCaptureEnabled(true)
+        case .checking:
+            break
+        }
     }
 
     func setVoiceBriefingsEnabled(_ isEnabled: Bool) {
@@ -362,6 +479,39 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func reloadLatestCheckpoint() async {
+        do {
+            if let latest = try await checkpointProvider.latest() {
+                let resolved = checkpointEdits[latest.id] ?? latest
+                checkpoint = dismissedCheckpointIDs.contains(latest.id) ? nil : resolved
+
+                if chatMessages.isEmpty {
+                    chatMessages = [
+                        ContinueChatMessage(
+                            role: .assistant,
+                            content: "Welcome back. \(resolved.summary) Ask me anything about this activity or what to do next."
+                        )
+                    ]
+                }
+            } else {
+                checkpoint = nil
+            }
+        } catch {
+            errorMessage = "Continue could not load the latest checkpoint: \(error.localizedDescription)"
+        }
+    }
+
+    private func captureEnabled(in snapshot: RuntimeSnapshot) -> Bool? {
+        switch snapshot.captureStatus {
+        case .recording:
+            true
+        case .paused:
+            false
+        case .checking, .unavailable:
+            nil
+        }
+    }
+
     private func refreshRuntime(notifyOnReturn: Bool) async {
         let previousPhase = runtime.phase
         let updatedRuntime = await runtimeProvider.snapshot()
@@ -387,5 +537,30 @@ final class AppModel: ObservableObject {
         }
 
         await returnNotifier.notifyReturnSummaryReady()
+    }
+}
+
+private struct ChatRequest: Encodable {
+    struct Message: Encodable {
+        let role: String
+        let content: String
+    }
+    let messages: [Message]
+}
+
+private struct ChatResponse: Decodable {
+    let reply: String?
+    let error: String?
+}
+
+private enum ChatError: LocalizedError {
+    case invalidResponse
+    case server(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse: "The Continue chat service returned an invalid response."
+        case let .server(message): "Continue chat failed: \(message)"
+        }
     }
 }

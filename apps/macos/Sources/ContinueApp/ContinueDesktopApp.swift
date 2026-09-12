@@ -9,7 +9,9 @@ struct ContinueDesktopApp: App {
     init() {
         NSApplication.shared.setActivationPolicy(.accessory)
         let configuration = ContinueIntegrationConfiguration()
-        let runtimeProvider = PreviewRuntimeProvider()
+        let runtimeProvider = SQLiteRuntimeProvider(
+            databaseURL: configuration.memoryDatabaseURL
+        )
         let checkpointProvider = SQLiteCheckpointProvider(
             databaseURL: configuration.memoryDatabaseURL
         )
@@ -27,6 +29,7 @@ struct ContinueDesktopApp: App {
                     checkpointProvider: checkpointProvider
                 ),
                 returnNotifier: SystemReturnNotifier(),
+                chatURL: configuration.chatURL,
                 dataSourceLabel: "LIVE DATABASE + VOICE"
             )
         )

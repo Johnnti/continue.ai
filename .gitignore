@@ -1,7 +1,9 @@
 node_modules
+.DS_Store
 .pnpm-store
 .next
 dist
+apps/screen-capture-macos/.build/
 coverage
 .env
 .env.local

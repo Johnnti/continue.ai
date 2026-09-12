@@ -5,6 +5,7 @@
   "packageManager": "pnpm@9.12.3",
   "scripts": {
     "dev": "corepack pnpm --filter @continue/web dev",
+    "dev:service": "corepack pnpm --filter @continue/web dev:service",
     "dev:web": "corepack pnpm --filter @continue/web dev",
     "dev:worker": "corepack pnpm --filter @continue/worker dev",
     "build": "corepack pnpm -r build",
