@@ -14,7 +14,7 @@ struct WaveformView: View {
             isAnimated: !reduceMotion && isAnimated
         )
         .aspectRatio(1, contentMode: .fit)
-        .frame(width: 96, height: 96)
+        .frame(width: 360, height: 360)
         .clipShape(Circle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Voice waveform")

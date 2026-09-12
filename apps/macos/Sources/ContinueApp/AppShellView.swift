@@ -23,15 +23,16 @@ enum AppDestination: String, CaseIterable, Identifiable {
 struct AppShellView: View {
     @ObservedObject var model: AppModel
     @State private var selection: AppDestination? = .now
+    @State private var isHistoryExpanded = true
 
     var body: some View {
         NavigationSplitView {
-            List(AppDestination.allCases, selection: $selection) { destination in
-                Label(destination.rawValue, systemImage: destination.systemImage)
-                    .tag(destination)
-                    .accessibilityIdentifier("navigation.\(destination.rawValue.lowercased())")
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 210)
+            CheckpointSidebar(
+                model: model,
+                selection: $selection,
+                isHistoryExpanded: $isHistoryExpanded
+            )
+            .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 290)
         } detail: {
             destinationView
         }

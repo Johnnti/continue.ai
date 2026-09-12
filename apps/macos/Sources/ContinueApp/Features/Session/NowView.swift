@@ -148,27 +148,27 @@ private struct VoiceConversationPanel: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        HStack(spacing: 20) {
+        VStack(spacing: 16) {
             WaveformView(
                 state: displayState,
                 levels: model.voice.levels
             )
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(spacing: 5) {
                 Text("Voice conversation")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.title3.weight(.semibold))
                 Text(statusText)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
 
                 if let error = model.voiceErrorMessage {
                     Text(error)
                         .font(.caption)
                         .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
                 }
             }
-
-            Spacer(minLength: 8)
 
             Button(buttonTitle, systemImage: buttonIcon) {
                 if isActive {
@@ -178,6 +178,7 @@ private struct VoiceConversationPanel: View {
                 }
             }
             .buttonStyle(.bordered)
+            .controlSize(.large)
             .disabled(
                 !model.preferences.voiceBriefingsEnabled
                     || model.isVoiceTransitioning
@@ -185,6 +186,15 @@ private struct VoiceConversationPanel: View {
             )
             .accessibilityIdentifier("voice.toggle-conversation")
         }
+        .frame(maxWidth: .infinity, minHeight: 470)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 30)
+        .background(ContinueTheme.surface, in: RoundedRectangle(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(.primary.opacity(0.08))
+        }
+        .accessibilityIdentifier("voice.conversation-panel")
     }
 
     private var isActive: Bool {
