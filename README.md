@@ -20,6 +20,8 @@ Requirements:
 - macOS 14 or later.
 - Swift 6 toolchain (Xcode 16 or the matching Command Line Tools).
 - A Metal-capable Mac for the iridescent waveform renderer.
+- Node.js 24 and pnpm 9 when seeding or generating checkpoints through the
+  TypeScript memory package.
 
 From the repository root, run:
 
@@ -31,6 +33,16 @@ The script builds a local `ContinuePreview.app` in the macOS user cache,
 embeds the Control Center extension, signs both bundles for local use, opens the
 Continue window, and adds a Continue item to the menu bar. Quit Continue from
 its menu-bar item when you finish using the preview.
+
+The app intentionally shows an empty state when `data/memory.sqlite` has no
+checkpoint. To review the complete interface without starting capture or
+configuring a model, seed one deterministic checkpoint before opening the app:
+
+```bash
+pnpm install
+pnpm seed:demo
+apps/macos/scripts/run-app.sh
+```
 
 The native client uses `PreviewRuntimeProvider` until the live Screenpipe
 coordinator is connected, but its checkpoint and voice boundaries are live:
@@ -51,6 +63,9 @@ apps/macos/scripts/run-app.sh --no-open
 
 # Run the deterministic core checks (26 checks at the time of writing).
 swift run --package-path apps/macos ContinueCoreChecks
+
+# Write through TypeScript and read the same temporary database through Swift.
+pnpm verify:database
 
 # Run Swift checks, build with warnings-as-errors, then run workspace checks.
 apps/macos/scripts/check.sh
@@ -100,6 +115,14 @@ repository; the preview script automatically points the app at
 `data/memory.sqlite`. The native adapter creates the compatible `memories`
 table when the database is new and reads only compact interpreted checkpoint
 JSON, never raw Screenpipe frames or microphone audio.
+
+`pnpm verify:database` creates an isolated temporary database, writes a
+canonical checkpoint through `createSqliteCheckpointStore`, and starts the
+Swift check executable in a second process. The check confirms that
+`SQLiteCheckpointProvider` reads the same checkpoint, ordering, and resume
+target while the TypeScript connection remains open. The SQLite store uses WAL
+(write-ahead logging) and a five-second busy timeout so the worker can write
+while the desktop app reads.
 
 Voice uses the pinned ElevenLabs Conversational AI Swift SDK (`3.3.1`). A
 public agent can connect with `CONTINUE_ELEVENLABS_AGENT_ID` (the existing
@@ -230,11 +253,15 @@ The boundaries enforce these rules:
 
 ## Web harness and worker
 
-Install the workspace dependencies before using the web commands:
+Install the workspace dependencies first. Run the web harness and capture
+worker in separate terminals because each process remains active:
 
 ```bash
 pnpm install
 pnpm dev:web
+```
+
+```bash
 pnpm dev:worker
 ```
 

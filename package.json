@@ -9,6 +9,7 @@
     "dev:worker": "corepack pnpm --filter @continue/worker dev",
     "build": "corepack pnpm -r build",
     "typecheck": "corepack pnpm -r typecheck",
+    "verify:database": "corepack pnpm tsx scripts/verify-sqlite-bridge.ts",
     "seed:demo": "corepack pnpm tsx scripts/seed-demo.ts"
   },
   "devDependencies": {

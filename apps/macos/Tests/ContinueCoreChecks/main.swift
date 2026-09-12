@@ -16,6 +16,17 @@ private enum CheckFailure: Error, CustomStringConvertible {
 @main
 struct ContinueCoreChecks {
     static func main() async throws {
+        if CommandLine.arguments.count == 4,
+           CommandLine.arguments[1] == "--verify-external-database"
+        {
+            try await verifyExternalDatabase(
+                at: URL(fileURLWithPath: CommandLine.arguments[2]),
+                expectedCheckpointID: CommandLine.arguments[3]
+            )
+            print("ContinueCoreChecks: external SQLite bridge passed")
+            return
+        }
+
         try checkpointContractRoundTripsThroughJSON()
         try await checkpointProviderReturnsNewestFirst()
         try await checkpointProviderHonorsZeroLimit()
@@ -44,6 +55,30 @@ struct ContinueCoreChecks {
         try integrationConfigurationHonorsOverrides()
 
         print("ContinueCoreChecks: 26 checks passed")
+    }
+
+    private static func verifyExternalDatabase(
+        at databaseURL: URL,
+        expectedCheckpointID: String
+    ) async throws {
+        let provider = SQLiteCheckpointProvider(databaseURL: databaseURL)
+        let latest = try await provider.latest()
+        let history = try await provider.history(limit: 10)
+        let emptyHistory = try await provider.history(limit: 0)
+
+        try expect(
+            latest?.id == expectedCheckpointID,
+            "Swift must read the checkpoint written by the TypeScript memory store"
+        )
+        try expect(
+            history.first?.id == expectedCheckpointID,
+            "Swift history must preserve the TypeScript checkpoint order"
+        )
+        try expect(
+            history.first?.resumeTargets.first?.locator == "https://example.com/continue",
+            "Swift must retain resume target locators written by TypeScript"
+        )
+        try expect(emptyHistory.isEmpty, "A zero Swift history limit must return no checkpoints")
     }
 
     private static func checkpointContractRoundTripsThroughJSON() throws {
