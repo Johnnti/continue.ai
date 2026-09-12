@@ -16,6 +16,8 @@ protocol ReturnNotifying: Sendable {
 
 actor SystemReturnNotifier: ReturnNotifying {
     func authorizationStatus() async -> ReturnNotificationAuthorization {
+        guard Self.isPackagedApp else { return .denied }
+
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
 
@@ -32,10 +34,13 @@ actor SystemReturnNotifier: ReturnNotifying {
     }
 
     func requestAuthorization() async -> Bool {
-        (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert])) == true
+        guard Self.isPackagedApp else { return false }
+
+        return (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert])) == true
     }
 
     func notifyReturnSummaryReady() async {
+        guard Self.isPackagedApp else { return }
         guard await authorizationStatus() == .enabled else { return }
 
         let content = UNMutableNotificationContent()
@@ -51,5 +56,12 @@ actor SystemReturnNotifier: ReturnNotifying {
         )
         let center = UNUserNotificationCenter.current()
         try? await center.add(request)
+    }
+
+    /// UserNotifications requires an application bundle. `swift run` executes
+    /// the binary directly from `.build`, where asking for the shared center
+    /// raises an AppKit consistency exception instead of returning an error.
+    private static var isPackagedApp: Bool {
+        Bundle.main.bundleURL.pathExtension.caseInsensitiveCompare("app") == .orderedSame
     }
 }

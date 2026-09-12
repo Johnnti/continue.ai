@@ -2,14 +2,6 @@
 
 > **Current product contract:** [`PRODUCT_DECISIONS.md`](PRODUCT_DECISIONS.md) records the decisions made after the user-flow review. It is authoritative where older wording in this research document describes automatic voice playback, default workspace restoration, a different away threshold, or a different retention default.
 
-> **Implemented runtime as of September 12, 2026:** the verified developer
-> build uses `packages/screenpipe` to launch the repository's native macOS
-> capture helper and uses shared SQLite tables to coordinate that TypeScript
-> worker with the Swift app. Sections that specify the upstream Screenpipe HTTP
-> daemon describe the intended future adapter, not the code path currently run
-> by `pnpm dev:worker`. See the README architecture diagram and the current
-> verification status in `PRODUCT_DECISIONS.md` for the implemented path.
-
 ## 1. Executive decision
 
 Continue.ai will be implemented as a local-first macOS desktop application that observes activity through Screenpipe, converts a completed work session into a small structured checkpoint, posts a passive return notification, and presents the checkpoint when the person opens Continue. Voice is a manually started two-way conversation. Continue preserves current application state by default and reopens a file or URL only through the optional **Something closed?** review.
@@ -79,8 +71,8 @@ The repository already contains a coherent mock vertical slice. The following ta
 | Home UI | `apps/web/src/app/page.tsx` composes the orb, session card, status, resume button, and privacy indicator | Component concepts, copy direction, layout hierarchy | Move into `apps/desktop`; bind all visible states to the coordinator instead of hardcoded `returning` |
 | Screenpipe | `packages/screenpipe/src/client.ts` returns fixtures and reports healthy | Types, fixture adapter, normalization tests | Add a real adapter that calls the local API with authentication, bounded time ranges, selected fields, and deadlines |
 | Context engine | `packages/context-engine/src/summarizeSession.ts` returns demo checkpoint content | Prompt assembly, schema module, mock provider | Add a provider interface, schema-constrained model response, evidence mapping, validation, timeout, and fallback |
-| Memory | `packages/memory` writes `data/memory.sqlite`; the native client reads the shared `memories` table | Repository interface, canonical checkpoint schema, and fixtures | Add native writes and runtime-state migrations when the live coordinator replaces the preview runtime |
-| Voice | `packages/voice` provides briefing/tool contracts; the native app uses the pinned ElevenLabs Swift SDK | Tool names, briefing formatter, mocked tests | Add transcript persistence and richer workspace-tool results after the approval coordinator lands |
+| Memory | `packages/memory` writes `data/checkpoints.json` | Repository interface and fixtures | Replace runtime JSON writes with SQLite migrations and transactions in the desktop process |
+| Voice | `packages/voice` reports `mock` or `configured` | Tool names, briefing formatter, mocked tests | Add ElevenLabs provider, conversation state, client tool handlers, microphone failure state, and private-token path |
 | Workspace | `packages/workspace/openUrl.ts` and `openFile.ts` only log | Target types and pure validation tests | Add approval UI and a Swift `NSWorkspace` opener constrained by URL scheme and approved directories |
 | Coordinator | `apps/worker/src/scheduler.ts` demonstrates away/return detection | State-transition logic and replayable test cases | Persist state, run in a Swift actor, deduplicate checkpoints, publish snapshots, and handle restart recovery |
 | API | Next.js route handlers provide checkpoint/context/resume endpoints | Request/response contracts where useful | Replace internal HTTP routes with typed Swift service calls; the local UI does not need a web server |
@@ -636,12 +628,7 @@ The fallback may say: “You were active in VS Code and Chrome. Continue.ai coul
 
 ## 10. Local persistence
 
-SQLite replaces `data/checkpoints.json`. The TypeScript memory package writes
-`data/memory.sqlite`, and the native app now uses a serialized `SQLite3`
-repository to read the compatible `memories` table. The adapter creates the
-table and index when a new local database is selected, keeps SQL off the
-SwiftUI views, and maps canonical checkpoint JSON into the native model. Native
-writes and the full migration set remain part of the live coordinator work.
+SQLite replaces `data/checkpoints.json`. The native app should use GRDB.swift for an explicit SQLite repository and migration runner. GRDB is a maintained Swift toolkit focused on application development and documents database migrations, records, and serialized database access.[^40] A small `SQLite3` wrapper is acceptable if the team wants zero third-party storage dependencies, but the repository interface must remain the same.
 
 SwiftUI views should not receive general SQL access. The `CheckpointStore` actor should execute migrations and queries, then return product-specific values to `AppModel`. This keeps database work off the main actor and allows the store to be replaced with an in-memory fake in UI tests.
 
@@ -720,14 +707,7 @@ The default retention should be 30 days for checkpoints. Settings should offer 1
 
 ## 11. ElevenLabs voice implementation
 
-ElevenLabs maintains an official Swift SDK for iOS and macOS. The native app
-now pins that SDK through Swift Package Manager, starts the configured public
-agent or a private-agent conversation token, maps agent/VAD state to the
-waveform, and handles the initial client-tool contract. A public agent may use
-its agent ID directly; a private agent must receive a short-lived conversation
-token from a backend. The API key must not be exposed in the application
-bundle.[^27][^28] The app includes `NSMicrophoneUsageDescription` and requests
-microphone access only when the person starts a voice session.[^34]
+ElevenLabs maintains an official Swift SDK for iOS and macOS. The SDK is distributed through Swift Package Manager, supports Swift concurrency and SwiftUI observation, exposes connection and agent state, provides input/output audio tracks, supports voice and text modes, and delivers client-tool calls to the host application. Its documentation states that a public agent can start with an agent ID, while a private agent requires a temporary conversation token or signed URL generated outside the client; the API key must not be exposed in the application bundle.[^27][^28] The app must include `NSMicrophoneUsageDescription` and request microphone permission before starting a voice session.[^34]
 
 ### 11.1 Voice topology
 

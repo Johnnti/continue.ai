@@ -13,9 +13,7 @@ struct NowView: View {
                 appHeader
                 CaptureStatusStrip(
                     snapshot: model.runtime,
-                    summariesEnabled: model.preferences.interpretationEnabled,
-                    isUpdating: model.isUpdatingRuntime,
-                    onToggleRecording: model.toggleCapture
+                    summariesEnabled: model.preferences.interpretationEnabled
                 )
                 VoiceConversationPanel(model: model)
                 content
@@ -75,7 +73,7 @@ struct NowView: View {
 
             Spacer()
 
-             Text(model.dataSourceLabel)
+            Text("PREVIEW DATA")
                 .font(.caption2.weight(.semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
@@ -148,138 +146,55 @@ struct NowView: View {
 
 private struct VoiceConversationPanel: View {
     @ObservedObject var model: AppModel
-    @State private var draft = ""
-    @StateObject private var speechInput = SpeechInputController()
 
     var body: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 12) {
-                IridescenceView(
-                    level: isActive ? 0.65 : 0.24,
-                    tint: SIMD3<Float>(0.30, 0.62, 1.0),
-                    isAnimated: true
-                )
-                .frame(width: 38, height: 38)
-                .clipShape(Circle())
+        VStack(spacing: 16) {
+            WaveformView(
+                state: displayState,
+                levels: model.voice.levels
+            )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Chat with Continue")
-                        .font(.headline)
-                    Text(statusText)
+            VStack(spacing: 5) {
+                Text("Voice conversation")
+                    .font(.title3.weight(.semibold))
+                Text(statusText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                if let error = model.voiceErrorMessage {
+                    Text(error)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Button("Read recap", systemImage: "speaker.wave.2.fill") {
-                    if isActive {
-                        model.stopVoiceConversation()
-                    } else {
-                        model.startVoiceConversation()
-                    }
-                }
-                .disabled(model.checkpoint == nil || model.isVoiceTransitioning)
-            }
-
-            Divider()
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(model.chatMessages) { message in
-                            ChatBubble(message: message) {
-                                model.speakChatMessage(message.content)
-                            }
-                            .id(message.id)
-                        }
-
-                        if model.isChatResponding {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .controlSize(.small)
-                                Text("Continue is thinking…")
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                .frame(minHeight: 260, maxHeight: 360)
-                .onChange(of: model.chatMessages.count) {
-                    guard let last = model.chatMessages.last else { return }
-                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
                 }
             }
 
-            if let error = model.chatErrorMessage ?? model.voiceErrorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if let error = speechInput.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Ask about your recent activity…", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...4)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 10)
-                    .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                    .onSubmit { send() }
-
-                Button(
-                    speechInput.isListening ? "Send voice message" : "Start voice message",
-                    systemImage: speechInput.isListening ? "stop.circle.fill" : "mic.fill"
-                ) {
-                    if speechInput.isListening {
-                        speechInput.stop()
-                        send(speakReply: true)
-                    } else {
-                        speechInput.start()
-                    }
+            Button(buttonTitle, systemImage: buttonIcon) {
+                if isActive {
+                    model.stopVoiceConversation()
+                } else {
+                    model.startVoiceConversation()
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .tint(speechInput.isListening ? .red : .accentColor)
-                .disabled(model.isChatResponding)
-
-                Button("Send", systemImage: "arrow.up") {
-                    send()
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isChatResponding)
-                .keyboardShortcut(.return, modifiers: .command)
             }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .disabled(
+                !model.preferences.voiceBriefingsEnabled
+                    || model.isVoiceTransitioning
+                    || (!isActive && model.checkpoint == nil)
+            )
+            .accessibilityIdentifier("voice.toggle-conversation")
         }
-        .frame(maxWidth: .infinity, minHeight: 470, alignment: .top)
-        .padding(20)
+        .frame(maxWidth: .infinity, minHeight: 470)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 30)
         .background(ContinueTheme.surface, in: RoundedRectangle(cornerRadius: 24))
         .overlay {
             RoundedRectangle(cornerRadius: 24)
                 .stroke(.primary.opacity(0.08))
         }
         .accessibilityIdentifier("voice.conversation-panel")
-        .onChange(of: speechInput.transcript) {
-            draft = speechInput.transcript
-        }
-    }
-
-    private func send(speakReply: Bool = false) {
-        let message = draft
-        draft = ""
-        model.sendChatMessage(message, speakReply: speakReply)
     }
 
     private var isActive: Bool {
@@ -291,6 +206,16 @@ private struct VoiceConversationPanel: View {
         }
     }
 
+    private var buttonTitle: String {
+        guard model.preferences.voiceBriefingsEnabled else { return "Disabled" }
+        return isActive ? "End" : "Start conversation"
+    }
+
+    private var buttonIcon: String {
+        guard model.preferences.voiceBriefingsEnabled else { return "speaker.slash" }
+        return isActive ? "stop.fill" : "play.fill"
+    }
+
     private var statusText: String {
         guard model.preferences.voiceBriefingsEnabled else {
             return "Disabled in Settings"
@@ -298,15 +223,15 @@ private struct VoiceConversationPanel: View {
 
         return switch displayState {
         case .disconnected:
-            "Ask by text, then play any response aloud"
+            "Ask what you were doing or what comes next"
         case .connecting:
-            "Loading your latest recap…"
+            "Connecting…"
         case .listening:
-            "Ready"
+            "Listening"
         case .thinking:
-            "Preparing speech"
+            "Thinking"
         case .speaking:
-            "Reading your recap"
+            "Responding"
         case .muted:
             "Microphone muted"
         case let .failed(message):
@@ -319,45 +244,9 @@ private struct VoiceConversationPanel: View {
     }
 }
 
-private struct ChatBubble: View {
-    let message: ContinueChatMessage
-    let onSpeak: () -> Void
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            if message.role == .user { Spacer(minLength: 72) }
-
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 5) {
-                Text(message.content)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 10)
-                    .background(
-                        message.role == .user ? Color.accentColor : Color.primary.opacity(0.07),
-                        in: RoundedRectangle(cornerRadius: 15)
-                    )
-                    .foregroundStyle(message.role == .user ? Color.white : Color.primary)
-
-                if message.role == .assistant {
-                    Button("Read aloud", systemImage: "speaker.wave.2") {
-                        onSpeak()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-            }
-
-            if message.role == .assistant { Spacer(minLength: 72) }
-        }
-    }
-}
-
 private struct CaptureStatusStrip: View {
     let snapshot: RuntimeSnapshot
     let summariesEnabled: Bool
-    let isUpdating: Bool
-    let onToggleRecording: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -379,13 +268,6 @@ private struct CaptureStatusStrip: View {
                 Text(phaseLabel)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-
-                Button(recordingButtonTitle, systemImage: recordingButtonIcon) {
-                    onToggleRecording()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isUpdating || snapshot.captureStatus == .checking)
-                .accessibilityIdentifier("capture.toggle-recording")
             }
             .font(.subheadline.weight(.medium))
 
@@ -400,6 +282,7 @@ private struct CaptureStatusStrip: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(.primary.opacity(0.08))
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var statusIcon: String {
@@ -439,16 +322,6 @@ private struct CaptureStatusStrip: View {
         case .unavailable:
             "Off"
         }
-    }
-
-    private var recordingButtonTitle: String {
-        if case .recording = snapshot.captureStatus { return "Stop recording" }
-        return "Start recording"
-    }
-
-    private var recordingButtonIcon: String {
-        if case .recording = snapshot.captureStatus { return "stop.fill" }
-        return "record.circle"
     }
 
     private var phaseLabel: String {
@@ -511,7 +384,6 @@ private struct CheckpointCard: View {
                     systemImage: "arrow.right.circle",
                     items: checkpoint.nextSteps
                 )
-
             }
 
             if let evidence = checkpoint.evidence.first {
@@ -588,7 +460,6 @@ private struct CheckpointCard: View {
         }
         .shadow(color: .black.opacity(0.06), radius: 18, y: 8)
     }
-
 }
 
 private struct EditNextStepView: View {

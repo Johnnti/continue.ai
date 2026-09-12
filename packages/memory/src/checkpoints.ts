@@ -40,9 +40,8 @@ export function createJsonCheckpointStore(storagePath = defaultStoragePath): Che
       return checkpoints[checkpoints.length - 1] ?? null;
     },
     async getRecent(limit: number): Promise<SessionCheckpoint[]> {
-      if (limit <= 0) return [];
       const checkpoints = await readCheckpoints(storagePath);
-      return checkpoints.slice(-limit).reverse();
+      return checkpoints.slice(-Math.max(1, limit)).reverse();
     }
   };
 }

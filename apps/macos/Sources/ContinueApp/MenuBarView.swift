@@ -23,9 +23,7 @@ struct MenuBarView: View {
             model.markSteppingAway()
         }
         .disabled(
-            !model.preferences.captureEnabled
-                || !model.preferences.interpretationEnabled
-                || !model.preferences.checkpointTrigger.allowsManual
+            !model.preferences.interpretationEnabled
                 || model.runtime.phase == .away
                 || model.isUpdatingRuntime
         )

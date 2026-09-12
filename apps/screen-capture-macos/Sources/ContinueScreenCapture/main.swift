@@ -19,7 +19,6 @@ struct Interaction: Encodable, Sendable {
 
 struct Capture: Encodable {
     let timestamp: String
-    let idleSeconds: Double
     let displayName: String
     let displayId: UInt32
     let width: Int
@@ -330,17 +329,6 @@ func positiveIntegerEnvironment(_ key: String, fallback: Int) -> Int {
     return value
 }
 
-func secondsSinceLastUserInput() -> Double {
-    // Quartz defines kCGAnyInputEventType as the all-bits-set event type. This
-    // returns only an elapsed duration; it does not expose key or pointer data.
-    guard let anyInputEvent = CGEventType(rawValue: UInt32.max) else { return 0 }
-    let idleSeconds = CGEventSource.secondsSinceLastEventType(
-        .combinedSessionState,
-        eventType: anyInputEvent
-    )
-    return idleSeconds.isFinite ? max(0, idleSeconds) : 0
-}
-
 func captureImage(
     contentFilter: SCContentFilter,
     configuration: SCStreamConfiguration
@@ -397,8 +385,7 @@ struct ContinueScreenCapture {
                 )
                 let jpeg = try jpegData(for: image, quality: quality)
                 let capture = Capture(
-                    timestamp: isoTimestamp(), idleSeconds: secondsSinceLastUserInput(),
-                    displayName: "Display \(display.displayID)", displayId: display.displayID,
+                    timestamp: isoTimestamp(), displayName: "Display \(display.displayID)", displayId: display.displayID,
                     width: image.width, height: image.height,
                     screenshotBase64: jpeg.base64EncodedString(), screenshotMimeType: "image/jpeg",
                     appName: context.appName, windowTitle: context.windowTitle,

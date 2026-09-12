@@ -2,7 +2,6 @@ import Foundation
 
 public struct ActivityEventV1: Codable, Equatable, Sendable {
     public let timestamp: String
-    public let idleSeconds: Double?
     public let appName: String?
     public let windowTitle: String?
     public let text: String?
@@ -12,7 +11,6 @@ public struct ActivityEventV1: Codable, Equatable, Sendable {
 
     public init(
         timestamp: String,
-        idleSeconds: Double? = nil,
         appName: String? = nil,
         windowTitle: String? = nil,
         text: String? = nil,
@@ -21,7 +19,6 @@ public struct ActivityEventV1: Codable, Equatable, Sendable {
         durationSeconds: Double? = nil
     ) {
         self.timestamp = timestamp
-        self.idleSeconds = idleSeconds
         self.appName = appName
         self.windowTitle = windowTitle
         self.text = text
@@ -109,7 +106,6 @@ public struct SessionCheckpointV1: Codable, Equatable, Sendable {
 
         return Checkpoint(
             id: id,
-            project: project,
             createdAt: endedAtDate,
             awayDurationMinutes: max(0, awayDurationMinutes),
             headline: currentTask,

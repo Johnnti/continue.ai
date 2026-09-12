@@ -11,7 +11,6 @@ export interface ActivityInteraction {
 
 export interface ActivityEvent {
   timestamp: string;
-  idleSeconds?: number;
   appName?: string;
   windowTitle?: string;
   text?: string;
@@ -31,12 +30,6 @@ export interface ActivityEvent {
 
 export interface ResumeTarget {
   type: "url" | "file" | "app";
-  value: string;
-  label?: string;
-}
-
-export interface MemoryFact {
-  type: "url" | "file" | "app" | "text";
   value: string;
   label?: string;
 }
@@ -63,14 +56,7 @@ export interface SessionCheckpoint {
   confidence: number;
   sourceWindowMinutes: number;
   sourceEventCount?: number;
-  tags?: string[];
-  facts?: MemoryFact[];
-  context?: string[];
-  createdAt?: string;
-  updatedAt?: string;
 }
-
-export type SessionMemory = SessionCheckpoint;
 
 export type ContinueState =
   | "observing"
@@ -78,50 +64,3 @@ export type ContinueState =
   | "returning"
   | "briefing"
   | "resuming";
-
-export type CheckpointTrigger = "automatic" | "manual" | "automaticAndManual";
-
-export interface TrackingSchedulePolicy {
-  isEnabled: boolean;
-  startHour: number;
-  endHour: number;
-}
-
-export interface ActivityTrackingPolicy {
-  captureEnabled: boolean;
-  summariesEnabled: boolean;
-  checkpointTrigger: CheckpointTrigger;
-  idleThresholdMinutes: number;
-  observationWindowMinutes: number;
-  schedule: TrackingSchedulePolicy;
-  excludedApplications: string[];
-  checkpointRetentionDays: number;
-  screenpipeRetentionDays: number;
-}
-
-export type RuntimePhase = "observing" | "away" | "returning";
-export type RuntimeCaptureStatus = "recording" | "paused" | "unavailable";
-
-export interface RuntimeStatusRecord {
-  phase: RuntimePhase;
-  captureStatus: RuntimeCaptureStatus;
-  statusMessage: string;
-  lastActivityAt: string | null;
-  heartbeatAt: string;
-}
-
-export const DEFAULT_ACTIVITY_TRACKING_POLICY: ActivityTrackingPolicy = {
-  captureEnabled: true,
-  summariesEnabled: true,
-  checkpointTrigger: "automaticAndManual",
-  idleThresholdMinutes: 4,
-  observationWindowMinutes: 30,
-  schedule: {
-    isEnabled: false,
-    startHour: 9,
-    endHour: 17
-  },
-  excludedApplications: [],
-  checkpointRetentionDays: 7,
-  screenpipeRetentionDays: 0
-};

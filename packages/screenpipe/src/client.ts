@@ -6,45 +6,24 @@ import type { ActivityEvent } from "@continue/shared";
 
 export interface ScreenCaptureClient {
   captures(): AsyncGenerator<ActivityEvent>;
-  /** Interrupt an in-flight capture request and release the helper process. */
-  stop(): void;
 }
 
 export function createScreenCaptureClient(): ScreenCaptureClient {
-  let processHandle: ReturnType<typeof spawn> | null = null;
-  let stopRequested = false;
-
   return {
-    stop() {
-      stopRequested = true;
-      if (processHandle && processHandle.exitCode === null && !processHandle.killed) {
-        processHandle.kill("SIGTERM");
-      }
-    },
-
     async *captures(): AsyncGenerator<ActivityEvent> {
       const packagePath = process.env.CONTINUE_CAPTURE_PACKAGE
         ? path.resolve(process.env.CONTINUE_CAPTURE_PACKAGE)
         : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../apps/screen-capture-macos");
-      const helperProcess = spawn(
+      const processHandle = spawn(
         "swift",
         ["run", "--package-path", packagePath, "continue-screen-capture"],
-        { stdio: ["ignore", "pipe", "pipe"] }
+        { stdio: ["ignore", "pipe", "inherit"] }
       );
-      processHandle = helperProcess;
-      if (stopRequested) {
-        helperProcess.kill("SIGTERM");
-      }
-      let errorOutput = "";
-      helperProcess.stderr?.setEncoding("utf8");
-      helperProcess.stderr?.on("data", (chunk: string) => {
-        errorOutput = `${errorOutput}${chunk}`.slice(-4_096);
-      });
       const processExit = new Promise<number | null>((resolve, reject) => {
-        helperProcess.once("exit", resolve);
-        helperProcess.once("error", reject);
+        processHandle.once("exit", resolve);
+        processHandle.once("error", reject);
       });
-      const lines = createInterface({ input: helperProcess.stdout });
+      const lines = createInterface({ input: processHandle.stdout });
 
       try {
         for await (const line of lines) {
@@ -55,20 +34,12 @@ export function createScreenCaptureClient(): ScreenCaptureClient {
           yield capture;
         }
         const exitCode = await processExit;
-        if (exitCode !== 0 && !stopRequested) {
-          const detail = errorOutput.trim();
-          throw new Error(
-            detail || `Screen capture helper stopped unexpectedly (exit code ${exitCode ?? "unknown"})`
-          );
+        if (exitCode !== 0) {
+          throw new Error(`Screen capture helper stopped unexpectedly (exit code ${exitCode ?? "unknown"})`);
         }
       } finally {
         lines.close();
-        if (helperProcess.exitCode === null && !helperProcess.killed) {
-          helperProcess.kill("SIGTERM");
-        }
-        if (processHandle === helperProcess) {
-          processHandle = null;
-        }
+        processHandle.kill("SIGTERM");
       }
     }
   };

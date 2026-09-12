@@ -1,6 +1,5 @@
 import ContinueCore
 import Foundation
-import SQLite3
 
 private enum CheckFailure: Error, CustomStringConvertible {
     case expected(String)
@@ -16,37 +15,6 @@ private enum CheckFailure: Error, CustomStringConvertible {
 @main
 struct ContinueCoreChecks {
     static func main() async throws {
-        if CommandLine.arguments.count == 3,
-           CommandLine.arguments[1] == "--write-runtime-control"
-        {
-            await writeRuntimeControl(
-                to: URL(fileURLWithPath: CommandLine.arguments[2])
-            )
-            print("ContinueCoreChecks: Swift runtime control write passed")
-            return
-        }
-
-        if CommandLine.arguments.count == 3,
-           CommandLine.arguments[1] == "--verify-runtime-state"
-        {
-            try await verifyRuntimeState(
-                at: URL(fileURLWithPath: CommandLine.arguments[2])
-            )
-            print("ContinueCoreChecks: Swift runtime state read passed")
-            return
-        }
-
-        if CommandLine.arguments.count == 4,
-           CommandLine.arguments[1] == "--verify-external-database"
-        {
-            try await verifyExternalDatabase(
-                at: URL(fileURLWithPath: CommandLine.arguments[2]),
-                expectedCheckpointID: CommandLine.arguments[3]
-            )
-            print("ContinueCoreChecks: external SQLite bridge passed")
-            return
-        }
-
         try checkpointContractRoundTripsThroughJSON()
         try await checkpointProviderReturnsNewestFirst()
         try await checkpointProviderHonorsZeroLimit()
@@ -64,72 +32,8 @@ struct ContinueCoreChecks {
         try await runtimeControllerMarksManualAwayWithoutStoppingCapture()
         try checkpointNextStepCanBeCorrectedWithoutChangingEvidence()
         try returnNotificationRequiresOneEnabledAwayToReturnTransition()
-        try trackingScheduleHonorsWindow()
-        try checkpointTriggerLimitsManualAndAutomatic()
-        try preferencesNormalizeOptionsAndApplications()
-        try preferencesPersistThroughStore()
-        try appPreferencesDecodeLegacyPayload()
-        try await runtimeControllerAppliesTrackingPolicy()
-        try await sqliteCheckpointProviderReadsSharedMemory()
-        try await storedResumeProviderUsesDatabaseTargets()
-        try integrationConfigurationHonorsOverrides()
 
-        print("ContinueCoreChecks: 26 checks passed")
-    }
-
-    private static func writeRuntimeControl(to databaseURL: URL) async {
-        let provider = SQLiteRuntimeProvider(databaseURL: databaseURL)
-        let policy = ActivityTrackingPolicy(
-            captureEnabled: true,
-            summariesEnabled: true,
-            checkpointTrigger: .manual,
-            idleThresholdMinutes: 11,
-            observationWindowMinutes: 15,
-            schedule: TrackingSchedule(isEnabled: true, startHour: 8, endHour: 20),
-            excludedApplications: ["Messages"],
-            checkpointRetentionDays: 30,
-            screenpipeRetentionDays: 0
-        )
-
-        await provider.updateTrackingPolicy(policy)
-        await provider.markSteppingAway()
-    }
-
-    private static func verifyRuntimeState(at databaseURL: URL) async throws {
-        let provider = SQLiteRuntimeProvider(databaseURL: databaseURL)
-        let snapshot = await provider.snapshot()
-
-        try expect(snapshot.phase == .returning, "Swift must read the worker's returning phase")
-        try expect(snapshot.captureStatus == .recording, "Swift must read the worker's recording status")
-        try expect(
-            snapshot.statusMessage == "Return activity detected",
-            "Swift must preserve the worker's runtime status message"
-        )
-        try expect(snapshot.lastActivityAt != nil, "Swift must decode the worker's last-activity timestamp")
-    }
-
-    private static func verifyExternalDatabase(
-        at databaseURL: URL,
-        expectedCheckpointID: String
-    ) async throws {
-        let provider = SQLiteCheckpointProvider(databaseURL: databaseURL)
-        let latest = try await provider.latest()
-        let history = try await provider.history(limit: 10)
-        let emptyHistory = try await provider.history(limit: 0)
-
-        try expect(
-            latest?.id == expectedCheckpointID,
-            "Swift must read the checkpoint written by the TypeScript memory store"
-        )
-        try expect(
-            history.first?.id == expectedCheckpointID,
-            "Swift history must preserve the TypeScript checkpoint order"
-        )
-        try expect(
-            history.first?.resumeTargets.first?.locator == "https://example.com/continue",
-            "Swift must retain resume target locators written by TypeScript"
-        )
-        try expect(emptyHistory.isEmpty, "A zero Swift history limit must return no checkpoints")
+        print("ContinueCoreChecks: 17 checks passed")
     }
 
     private static func checkpointContractRoundTripsThroughJSON() throws {
@@ -263,7 +167,6 @@ struct ContinueCoreChecks {
         let checkpoint = try contract.makeCheckpoint(awayDurationMinutes: 42)
 
         try expect(contract.project == "continue.ai", "Contract fixture must retain the project")
-        try expect(checkpoint.project == contract.project, "Checkpoint must retain the project")
         try expect(checkpoint.headline == contract.currentTask, "UI headline must map from currentTask")
         try expect(checkpoint.completed == [contract.lastAction], "Completed work must map from lastAction")
         try expect(checkpoint.nextSteps == [contract.nextAction], "Next steps must map from nextAction")
@@ -339,20 +242,12 @@ struct ContinueCoreChecks {
             "An enabled away-to-return transition must produce a return notification"
         )
         try expect(
-            RuntimeTransition.shouldNotifyReturn(
+            !RuntimeTransition.shouldNotifyReturn(
                 previous: .observing,
                 current: .returning,
                 summariesEnabled: true
             ),
-            "Polling must notify even when it did not observe the brief away state"
-        )
-        try expect(
-            !RuntimeTransition.shouldNotifyReturn(
-                previous: .returning,
-                current: .returning,
-                summariesEnabled: true
-            ),
-            "A persistent returning snapshot must not produce a duplicate notification"
+            "Opening a returning snapshot must not produce a duplicate notification"
         )
         try expect(
             !RuntimeTransition.shouldNotifyReturn(
@@ -362,302 +257,6 @@ struct ContinueCoreChecks {
             ),
             "Paused summaries must suppress return notifications"
         )
-    }
-
-    private static func trackingScheduleHonorsWindow() throws {
-        try expect(
-            TrackingSchedule.allDay.contains(hour: 3),
-            "A disabled schedule must include every hour"
-        )
-
-        let workday = TrackingSchedule(isEnabled: true, startHour: 9, endHour: 17)
-        try expect(workday.contains(hour: 9), "The schedule must include its start hour")
-        try expect(workday.contains(hour: 16), "The schedule must include hours before its end")
-        try expect(!workday.contains(hour: 17), "The schedule must exclude its end hour")
-        try expect(!workday.contains(hour: 8), "The schedule must exclude hours before its start")
-        try expect(workday.displayRange == "9 AM–5 PM", "The display range must format both hours")
-
-        let overnight = TrackingSchedule(isEnabled: true, startHour: 22, endHour: 6)
-        try expect(overnight.contains(hour: 23), "An overnight schedule must include late hours")
-        try expect(overnight.contains(hour: 5), "An overnight schedule must include early hours")
-        try expect(!overnight.contains(hour: 12), "An overnight schedule must exclude midday")
-
-        let degenerate = TrackingSchedule(isEnabled: true, startHour: 12, endHour: 12)
-        try expect(degenerate.contains(hour: 4), "Equal start and end hours must include every hour")
-
-        let clamped = TrackingSchedule(isEnabled: true, startHour: -3, endHour: 42)
-        try expect(clamped.startHour == 0, "Schedule hours must clamp to the start of the day")
-        try expect(clamped.endHour == 23, "Schedule hours must clamp to the end of the day")
-    }
-
-    private static func checkpointTriggerLimitsManualAndAutomatic() throws {
-        try expect(
-            CheckpointTrigger.automatic.allowsAutomatic,
-            "The automatic trigger must allow automatic checkpoints"
-        )
-        try expect(
-            !CheckpointTrigger.automatic.allowsManual,
-            "The automatic trigger must reject manual away mode"
-        )
-        try expect(
-            CheckpointTrigger.manual.allowsManual,
-            "The manual trigger must allow manual away mode"
-        )
-        try expect(
-            !CheckpointTrigger.manual.allowsAutomatic,
-            "The manual trigger must reject automatic checkpoints"
-        )
-        try expect(
-            CheckpointTrigger.automaticAndManual.allowsAutomatic
-                && CheckpointTrigger.automaticAndManual.allowsManual,
-            "The combined trigger must allow both checkpoint paths"
-        )
-    }
-
-    private static func preferencesNormalizeOptionsAndApplications() throws {
-        let preferences = AppPreferences(
-            interpretationEnabled: true,
-            voiceBriefingsEnabled: true,
-            idleThresholdMinutes: 90,
-            checkpointRetentionDays: 12,
-            observationWindowMinutes: 7,
-            excludedApplications: [" Messages ", "messages", "", "  ", "Mail"]
-        )
-
-        try expect(
-            preferences.idleThresholdMinutes == 60,
-            "The away threshold must clamp to 60 minutes"
-        )
-        try expect(
-            preferences.checkpointRetentionDays == 7,
-            "Unknown checkpoint retention must fall back to 7 days"
-        )
-        try expect(
-            preferences.observationWindowMinutes == 5,
-            "The observation window must snap to the nearest option"
-        )
-        try expect(
-            preferences.excludedApplications == ["Messages", "Mail"],
-            "Exclusions must trim, drop empty entries, and deduplicate case-insensitively"
-        )
-        try expect(
-            preferences.screenpipeRetentionDays == 0,
-            "Unknown Screenpipe retention must fall back to Screenpipe-managed"
-        )
-    }
-
-    private static func preferencesPersistThroughStore() throws {
-        let suiteName = "ContinueCoreChecks.preferences"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
-            throw CheckFailure.expected("A UserDefaults suite must be available for the store check")
-        }
-        defer {
-            AppPreferencesStore.remove(from: defaults)
-            defaults.removePersistentDomain(forName: suiteName)
-        }
-
-        var preferences = AppPreferences.previewDefaults
-        preferences.captureEnabled = false
-        preferences.observationWindowMinutes = 15
-        preferences.checkpointTrigger = .manual
-        preferences.trackingSchedule = TrackingSchedule(isEnabled: true, startHour: 9, endHour: 17)
-        preferences.excludedApplications = ["Messages"]
-
-        AppPreferencesStore.save(preferences, to: defaults)
-
-        try expect(
-            AppPreferencesStore.load(from: defaults) == preferences,
-            "Saved preferences must reload without changes"
-        )
-
-        AppPreferencesStore.remove(from: defaults)
-        try expect(
-            AppPreferencesStore.load(from: defaults) == .previewDefaults,
-            "Removing stored preferences must restore the conservative defaults"
-        )
-    }
-
-    private static func appPreferencesDecodeLegacyPayload() throws {
-        let legacy = """
-        {"interpretationEnabled":false,"voiceBriefingsEnabled":false,\
-        "idleThresholdMinutes":9,"checkpointRetentionDays":30}
-        """
-        let decoded = try JSONDecoder().decode(AppPreferences.self, from: Data(legacy.utf8))
-
-        try expect(decoded.captureEnabled, "Legacy payloads must default capture to enabled")
-        try expect(!decoded.interpretationEnabled, "Legacy payloads must retain stored values")
-        try expect(decoded.idleThresholdMinutes == 9, "Legacy payloads must retain the threshold")
-        try expect(
-            decoded.observationWindowMinutes == 30,
-            "Legacy payloads must default the observation window"
-        )
-        try expect(
-            decoded.checkpointTrigger == .automaticAndManual,
-            "Legacy payloads must default the checkpoint trigger"
-        )
-        try expect(decoded.trackingSchedule == .allDay, "Legacy payloads must default the schedule")
-        try expect(decoded.excludedApplications.isEmpty, "Legacy payloads must default exclusions")
-        try expect(
-            decoded.screenpipeRetentionDays == 0,
-            "Legacy payloads must default Screenpipe retention"
-        )
-
-        let legacyPolicy = """
-        {"captureEnabled":true,"summariesEnabled":false,"idleThresholdMinutes":9}
-        """
-        let decodedPolicy = try JSONDecoder().decode(
-            ActivityTrackingPolicy.self,
-            from: Data(legacyPolicy.utf8)
-        )
-        try expect(!decodedPolicy.summariesEnabled, "Legacy policies must retain stored values")
-        try expect(
-            decodedPolicy.checkpointRetentionDays == 7,
-            "Legacy policies must default checkpoint retention"
-        )
-        try expect(
-            decodedPolicy.checkpointTrigger == .automaticAndManual,
-            "Legacy policies must default the checkpoint trigger"
-        )
-    }
-
-    private static func runtimeControllerAppliesTrackingPolicy() async throws {
-        let provider = PreviewRuntimeProvider()
-
-        await provider.setCaptureEnabled(false)
-        let paused = await provider.snapshot()
-        try expect(paused.captureStatus == .paused, "Disabling capture must pause Screenpipe")
-        try expect(paused.phase == .observing, "Disabling capture must leave the away phase")
-
-        var preferences = AppPreferences.previewDefaults
-        preferences.captureEnabled = true
-        preferences.trackingSchedule = TrackingSchedule(isEnabled: true, startHour: 9, endHour: 17)
-        let policy = ActivityTrackingPolicy(preferences: preferences)
-
-        await provider.updateTrackingPolicy(policy)
-        let scheduled = await provider.snapshot()
-        try expect(
-            scheduled.captureStatus == .recording,
-            "Re-enabling capture must resume Screenpipe recording"
-        )
-        try expect(
-            scheduled.statusMessage.contains("9 AM–5 PM"),
-            "An enabled schedule must surface its display range"
-        )
-        let appliedPolicy = await provider.currentTrackingPolicy()
-        try expect(
-            appliedPolicy == policy,
-            "The runtime must retain the applied tracking policy"
-        )
-
-        await provider.setSummariesEnabled(false)
-        await provider.markSteppingAway()
-        let suppressed = await provider.snapshot()
-        try expect(
-            suppressed.phase != .away,
-            "Manual away must be ignored while summaries are paused"
-        )
-    }
-
-    private static func sqliteCheckpointProviderReadsSharedMemory() async throws {
-        let databaseURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("continue-core-check-\(UUID().uuidString).sqlite")
-        defer { try? FileManager.default.removeItem(at: databaseURL) }
-
-        try createSharedMemoryFixture(at: databaseURL)
-        let provider = SQLiteCheckpointProvider(databaseURL: databaseURL)
-
-        let latest = try await provider.latest()
-        let history = try await provider.history(limit: 10)
-
-        try expect(
-            latest?.id == "live-checkpoint",
-            "SQLite provider must decode the shared memory database payload"
-        )
-        try expect(
-            history.first?.resumeTargets.first?.locator == "https://example.com",
-            "SQLite provider must retain canonical resume target locators"
-        )
-    }
-
-    private static func storedResumeProviderUsesDatabaseTargets() async throws {
-        let databaseURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("continue-resume-check-\(UUID().uuidString).sqlite")
-        defer { try? FileManager.default.removeItem(at: databaseURL) }
-
-        try createSharedMemoryFixture(at: databaseURL)
-        let checkpointProvider = SQLiteCheckpointProvider(databaseURL: databaseURL)
-        let resumeProvider = StoredCheckpointResumeProvider(checkpointProvider: checkpointProvider)
-        let preview = try await resumeProvider.preview(checkpointID: "live-checkpoint")
-        let results = try await resumeProvider.execute(
-            checkpointID: preview.checkpointID,
-            targetIDs: Set(preview.targets.map(\.id))
-        )
-
-        try expect(
-            results.count == preview.targets.count,
-            "Database-backed resume must validate and return stored targets"
-        )
-    }
-
-    private static func integrationConfigurationHonorsOverrides() throws {
-        let configuration = ContinueIntegrationConfiguration(environment: [
-            "CONTINUE_MEMORY_DATABASE_PATH": "/tmp/continue-checks.sqlite",
-            "CONTINUE_ELEVENLABS_SPEECH_URL": "http://localhost:4040/speak",
-            "CONTINUE_CHAT_URL": "http://localhost:4040/chat",
-            "CONTINUE_BACKEND_URL": "http://localhost:4040"
-        ])
-
-        try expect(
-            configuration.memoryDatabaseURL.path == "/tmp/continue-checks.sqlite",
-            "The database path must be configurable without changing source code"
-        )
-        try expect(
-            configuration.elevenLabsSpeechURL.absoluteString == "http://localhost:4040/speak",
-            "The native speech endpoint must be configurable"
-        )
-        try expect(
-            configuration.chatURL.absoluteString == "http://localhost:4040/chat",
-            "The native chat endpoint must be configurable"
-        )
-        try expect(
-            configuration.backendURL.absoluteString == "http://localhost:4040",
-            "The headless local service URL must be configurable"
-        )
-    }
-
-    private static func createSharedMemoryFixture(at databaseURL: URL) throws {
-        var database: OpaquePointer?
-        let openResult = databaseURL.path.withCString { path in
-            sqlite3_open(path, &database)
-        }
-        guard openResult == SQLITE_OK, let database else {
-            throw CheckFailure.expected("The SQLite fixture database must open")
-        }
-        defer { sqlite3_close(database) }
-
-        let schema = """
-            CREATE TABLE memories (
-                id TEXT PRIMARY KEY,
-                ended_at TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                memory_json TEXT NOT NULL
-            );
-            """
-        guard sqlite3_exec(database, schema, nil, nil, nil) == SQLITE_OK else {
-            throw CheckFailure.expected("The SQLite fixture schema must be created")
-        }
-
-        let payload = """
-            {"id":"live-checkpoint","endedAt":"2026-09-12T10:00:00Z","project":"continue.ai","currentTask":"Connecting the live adapters","summary":"The database adapter has a committed checkpoint.","lastAction":"Added the SQLite boundary","nextAction":"Start the voice session","resumeTargets":[{"type":"url","value":"https://example.com","label":"Example"}],"confidence":0.9,"sourceWindowMinutes":5}
-            """
-        let escapedPayload = payload.replacingOccurrences(of: "'", with: "''")
-        let insert = """
-            INSERT INTO memories (id, ended_at, created_at, memory_json)
-            VALUES ('live-checkpoint', '2026-09-12T10:00:00Z', '2026-09-12T10:00:00Z', '\(escapedPayload)');
-            """
-        guard sqlite3_exec(database, insert, nil, nil, nil) == SQLITE_OK else {
-            throw CheckFailure.expected("The SQLite fixture checkpoint must be inserted")
-        }
     }
 
     private static func expect(

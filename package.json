@@ -5,14 +5,10 @@
   "packageManager": "pnpm@9.12.3",
   "scripts": {
     "dev": "corepack pnpm --filter @continue/web dev",
-    "dev:service": "corepack pnpm --filter @continue/web dev:service",
     "dev:web": "corepack pnpm --filter @continue/web dev",
     "dev:worker": "corepack pnpm --filter @continue/worker dev",
-    "build": "corepack pnpm -r build",
-    "typecheck": "corepack pnpm -r typecheck",
-    "verify:database": "corepack pnpm tsx scripts/verify-sqlite-bridge.ts",
-    "verify:runtime": "corepack pnpm tsx scripts/verify-runtime-policy.ts",
-    "seed:demo": "corepack pnpm tsx scripts/seed-demo.ts"
+    "build": "pnpm -r build",
+    "typecheck": "corepack pnpm -r typecheck"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",

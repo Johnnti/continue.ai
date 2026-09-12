@@ -1,4 +1,3 @@
-import AppKit
 import ContinueCore
 import SwiftUI
 
@@ -40,11 +39,6 @@ struct AppShellView: View {
         .navigationTitle(selection?.rawValue ?? "Continue")
         .task {
             model.startMonitoring()
-        }
-        .onOpenURL { url in
-            guard url.scheme == "continue", url.host == "conversation" else { return }
-            selection = .now
-            NSApplication.shared.activate(ignoringOtherApps: true)
         }
     }
 

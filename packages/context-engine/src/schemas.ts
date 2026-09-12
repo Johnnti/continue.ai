@@ -6,12 +6,6 @@ export const ResumeTargetSchema = z.object({
   label: z.string().optional()
 });
 
-export const MemoryFactSchema = z.object({
-  type: z.enum(["url", "file", "app", "text"]),
-  value: z.string().min(1),
-  label: z.string().optional()
-});
-
 export const KeyActivitySchema = z.object({
   timestamp: z.string().optional(),
   app: z.string().min(1),
@@ -33,10 +27,5 @@ export const SessionCheckpointSchema = z.object({
   resumeTargets: z.array(ResumeTargetSchema),
   confidence: z.number().min(0).max(1),
   sourceWindowMinutes: z.number().int().min(1),
-  sourceEventCount: z.number().int().min(1).optional(),
-  tags: z.array(z.string()).default([]),
-  facts: z.array(MemoryFactSchema).default([]),
-  context: z.array(z.string()).default([]),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional()
+  sourceEventCount: z.number().int().min(1).optional()
 });
