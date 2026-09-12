@@ -10,8 +10,8 @@ Continue helps a person recover mental context after leaving a computer. Continu
 
 The normal return flow is:
 
-1. Screenpipe continues recording while its own recording setting is enabled.
-2. Continue checks Screenpipe periodically without continuously running summarization.
+1. Continue's capture helper streams a bounded observation while activity capture is enabled.
+2. The worker processes each observation without continuously running summarization.
 3. Continue creates a checkpoint after four minutes away, or immediately when the person chooses **I'm stepping away**.
 4. Continue detects new meaningful activity after the away period.
 5. macOS displays a passive notification with the generic body **Your return summary is ready.**
@@ -37,27 +37,29 @@ If an item actually closed, the person can select **Something closed?**. Continu
 | Voice | Start only after an explicit click. Support a natural two-way conversation, not automatic one-way playback. |
 | Waveform | Represent disconnected, connecting, listening, thinking, speaking, muted, and failed voice states. Respect Reduce Motion and retain a text state label. |
 | Away threshold | Default to four minutes. Allow a one-minute to sixty-minute setting and a manual away action. |
-| History | Retain interpreted checkpoints for seven days by default. Screenpipe controls retention of its own raw data. |
+| History | Retain interpreted checkpoints for seven days by default. The current streaming helper does not persist raw frames. |
 | App presence | Keep a menu-bar control available. Use the full window for the current summary, history, and settings. |
-| Service failure | State clearly when Screenpipe is unavailable. Label deterministic fixtures as preview data. |
+| Service failure | State clearly when the activity worker is unavailable. Label deterministic fixtures as preview data. |
 | Demo outcome | Leave, return, receive an accurate summary, optionally converse, and continue working without unnecessary application restoration. |
 
 ## Capture, interpretation, and voice are separate states
 
-Screenpipe and Continue are separate processes. A healthy Continue process does not prove that Screenpipe is recording. A healthy Screenpipe process does not prove that Continue summaries are enabled.
+The capture worker and Continue are separate processes. A healthy Continue process does not prove that the worker is recording. A healthy worker does not prove that Continue summaries are enabled.
 
 The interface therefore reports two independent states:
 
-- **Screenpipe recording: On / Paused / Off / Checking** describes the external capture service.
-- **Continue summaries: On / Paused** describes whether Continue interprets Screenpipe activity and creates checkpoints.
+- **Activity capture: On / Paused / Unavailable / Checking** describes the worker heartbeat and capture state.
+- **Continue summaries: On / Paused** describes whether Continue interprets activity and creates checkpoints.
 
-Selecting **Pause Continue summaries** must not claim or imply that Screenpipe stopped. The current implementation does not expose **Pause all capture** because the team has not verified a reliable Screenpipe control API for that operation.
+Selecting **Pause Continue summaries** leaves the capture stream running. Selecting
+**Record activity** off stops the worker's child capture process on its next
+policy cycle. The two controls therefore represent separate operations.
 
 The microphone is a third independent state. Continue starts the microphone only when the person selects **Start conversation**, and it stops when the person selects **End** or disables voice conversations.
 
 ```mermaid
 flowchart LR
-    SP[Screenpipe process\nrecording while enabled] -->|local bounded API| POLL[Continue runtime poll\nevery 30-60 seconds]
+    SP[Native capture helper\nstreaming while enabled] -->|JSON lines| POLL[TypeScript activity worker\none event per capture interval]
     POLL --> STATE[away and return state]
     STATE -->|four minutes idle\nor manual away| CP[compact checkpoint]
     CP -->|new activity after away| NOTIFY[passive generic notification]
@@ -71,7 +73,10 @@ flowchart LR
 
 Continue must not infer absence from the foreground application alone. When a person leaves a computer, macOS normally keeps the same application in front. Process identifiers and application activation state therefore cannot establish whether the person is present or what task they were performing.
 
-Screenpipe supplies the primary high-level activity data. A future native coordinator may use `NSWorkspace` activation, sleep, and wake notifications only as refresh hints. It must not create a checkpoint from process names alone.
+The capture helper supplies application/window context and seconds since any
+user input. The worker uses the idle duration for presence and uses context only
+as summarization evidence or as a fallback when idle duration is absent. It does
+not create a checkpoint from foreground process state alone.
 
 ```mermaid
 stateDiagram-v2
@@ -103,6 +108,7 @@ apps/macos/
 ├── Sources/ContinueCore/
 │   ├── versioned integration models
 │   ├── runtime, checkpoint, voice, and reopen protocols
+│   ├── SQLite runtime-policy and worker-state adapter
 │   ├── deterministic preview providers
 │   └── shared JSON contract fixtures
 ├── Sources/ContinueApp/
@@ -122,25 +128,29 @@ The product client consumes service contracts and does not modify the implementa
 
 | Workstream | Owned implementation | Product consumes |
 |---|---|---|
-| Screenpipe/Data | `packages/screenpipe/**` | normalized activity, capture status, freshness, and evidence references |
+| Capture/Data | `apps/screen-capture-macos/**`, `packages/screenpipe/**` | normalized activity, idle duration, capture status, freshness, and evidence references |
 | AI/Memory | `packages/context-engine/**`, `packages/memory/**` | validated checkpoint and history records |
 | Voice | `packages/voice/**` and the configured voice provider | session state, levels, transcript behavior, and validated client tools |
 | Product/Integration | `apps/macos/**` | the three contracts above through Swift protocols and JSON fixtures |
 
 ## Current verification status
 
-The current native client uses the shared SQLite checkpoint database and the
-official ElevenLabs voice provider. Screenpipe capture/runtime coordination,
-model summarization, and real workspace opening remain explicit preview or
-pending boundaries; the app does not silently substitute fixture checkpoints
+The current native client uses the shared SQLite checkpoint database, the
+SQLite runtime coordinator, and the official ElevenLabs voice provider. The
+TypeScript worker launches the native macOS capture helper, applies saved
+policy, creates checkpoints through the context engine, and publishes a
+heartbeat and phase for the Swift client. Real workspace opening remains a
+pending boundary; the app does not silently substitute fixture checkpoints
 when the database is empty.
 
 The repository currently verifies the following behavior:
 
 - Swift decodes the canonical checkpoint and normalized activity JSON fixtures.
 - TypeScript validates the same checkpoint with the existing strict shared schema.
-- The preview runtime keeps Screenpipe recording state separate from Continue summary state.
-- Manual away changes the runtime phase without stopping capture.
+- The SQLite runtime keeps capture state separate from Continue summary state.
+- Swift policy writes and manual-away commands are read by the TypeScript worker.
+- TypeScript worker state and heartbeat writes are read by Swift.
+- Native idle duration, schedules, manual triggers, exclusions, observation windows, checkpoint retry behavior, and retention are deterministic checks.
 - The four-minute and seven-day defaults are deterministic checks.
 - The preview voice provider enters listening state only after an explicit start action.
 - The reopen review starts with nothing selected and rejects unknown target identifiers.
@@ -148,16 +158,19 @@ The repository currently verifies the following behavior:
 - All Swift targets compile with warnings treated as errors.
 - All eight TypeScript workspace projects pass type checking.
 
-The latest local real-service probe found no Screenpipe server at `http://localhost:3030`. A collaborator must provide a running service and sanitized real response fixtures before the product workstream can verify live capture mapping. The Screenpipe adapter should follow the project's maintained [local API guidance](https://github.com/screenpipe/screenpipe/blob/main/crates/screenpipe-core/assets/skills/screenpipe-api/SKILL.md) and keep requests bounded by time and result count.
+The current `@continue/screenpipe` adapter does not call the upstream
+Screenpipe HTTP daemon. It starts the repository's native macOS streaming
+helper. A future migration to the upstream daemon must follow the project's
+maintained [local API guidance](https://github.com/screenpipe/screenpipe/blob/main/crates/screenpipe-core/assets/skills/screenpipe-api/SKILL.md), use bounded requests, and add sanitized response fixtures before it replaces the verified helper path.
 
 ## Integration acceptance checks
 
 The real adapters are ready for the product client only when this sequence passes:
 
-1. Screenpipe reports its actual recording state and recent meaningful activity.
+1. The worker reports its actual recording state and recent meaningful activity.
 2. Continue polls without overlapping requests or continuous model inference.
 3. Four minutes without meaningful activity produces exactly one checkpoint.
-4. The manual away action produces the same durable away state without stopping Screenpipe.
+4. The manual away action produces the same durable away state without stopping capture.
 5. New activity after away produces one passive notification and does not open or focus Continue.
 6. The written summary identifies the task, last action, next step, evidence, and confidence.
 7. Starting voice begins a two-way session and starting no other flow activates the microphone.
@@ -169,7 +182,7 @@ The real adapters are ready for the product client only when this sequence passe
 
 - Low-level process enumeration as a primary activity source.
 - Automatic focus changes or automatic workspace restoration.
-- A Screenpipe stop button until its supported control interface is verified.
+- Raw capture persistence or a raw-retention promise; the current helper streams frames without storing them.
 - Microphone activation before an explicit voice action.
 - Arbitrary computer control, shell commands, code edits, commits, messages, or form submission from a checkpoint or voice tool.
 - Persistence of raw screenshots or microphone samples in Continue's checkpoint store.
