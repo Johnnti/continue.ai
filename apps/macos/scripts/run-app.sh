@@ -14,12 +14,28 @@ BUNDLE_ROOT="${USER_CACHE_DIR%/}/continue-ai-preview"
 APP_BUNDLE="$BUNDLE_ROOT/ContinuePreview.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 CONTROL_BUNDLE="$APP_CONTENTS/PlugIns/ContinueControlExtension.appex"
+FRAMEWORKS_DIR="$APP_CONTENTS/Frameworks"
 
-mkdir -p "$BUNDLE_ROOT" "$APP_CONTENTS/MacOS" "$CONTROL_BUNDLE/Contents/MacOS"
+rm -rf "$APP_BUNDLE"
+mkdir -p \
+    "$BUNDLE_ROOT" \
+    "$APP_CONTENTS/MacOS" \
+    "$CONTROL_BUNDLE/Contents/MacOS" \
+    "$FRAMEWORKS_DIR"
 install -m 755 "$BIN_DIR/ContinueApp" "$APP_CONTENTS/MacOS/ContinueApp"
 install -m 755 \
     "$BIN_DIR/ContinueControlExtension" \
     "$CONTROL_BUNDLE/Contents/MacOS/ContinueControlExtension"
+
+for framework in "$BIN_DIR"/*.framework; do
+    if [[ -d "$framework" ]]; then
+        ditto "$framework" "$FRAMEWORKS_DIR/$(basename "$framework")"
+    fi
+done
+
+install_name_tool \
+    -add_rpath '@executable_path/../Frameworks' \
+    "$APP_CONTENTS/MacOS/ContinueApp"
 
 APP_INFO="$APP_CONTENTS/Info.plist"
 plutil -create xml1 "$APP_INFO"
@@ -75,6 +91,11 @@ plutil -insert NSExtension.NSExtensionPointIdentifier \
     "$CONTROL_INFO"
 
 xattr -cr "$APP_BUNDLE"
+for framework in "$FRAMEWORKS_DIR"/*.framework; do
+    if [[ -d "$framework" ]]; then
+        codesign --force --sign - --timestamp=none "$framework"
+    fi
+done
 codesign \
     --force \
     --sign - \
