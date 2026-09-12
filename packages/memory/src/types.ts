@@ -1,4 +1,9 @@
-import type { SessionCheckpoint, SessionMemory } from "@continue/shared";
+import type {
+  ActivityTrackingPolicy,
+  RuntimeStatusRecord,
+  SessionCheckpoint,
+  SessionMemory
+} from "@continue/shared";
 
 export interface MemoryQuery {
   project?: string;
@@ -14,4 +19,11 @@ export interface CheckpointStore {
   saveMemory?(memory: SessionMemory): Promise<void>;
   getLatestMemory?(): Promise<SessionMemory | null>;
   searchMemory?(query: MemoryQuery): Promise<SessionMemory[]>;
+}
+
+export interface RuntimeCoordinatorStore {
+  getPolicy(): Promise<ActivityTrackingPolicy | null>;
+  publishState(state: RuntimeStatusRecord): Promise<void>;
+  consumeManualAwayRequests(): Promise<number>;
+  pruneCheckpoints(retentionDays: number): Promise<void>;
 }

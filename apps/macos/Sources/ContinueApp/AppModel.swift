@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
     private let resumeProvider: any ResumeProviding
     private let returnNotifier: any ReturnNotifying
     private var monitoringTask: Task<Void, Never>?
+    private var preferenceSyncTask: Task<Void, Never>?
     private var dismissedCheckpointIDs: Set<String> = []
     private var checkpointEdits: [String: Checkpoint] = [:]
 
@@ -73,6 +74,9 @@ final class AppModel: ObservableObject {
 
         monitoringTask = Task { [weak self] in
             guard let self else { return }
+            await self.runtimeController.updateTrackingPolicy(
+                ActivityTrackingPolicy(preferences: self.preferences)
+            )
             await self.load()
 
             while !Task.isCancelled {
@@ -299,6 +303,7 @@ final class AppModel: ObservableObject {
     }
 
     func setObservationWindow(minutes: Int) {
+        guard AppPreferences.observationWindowOptions.contains(minutes) else { return }
         var updatedPreferences = preferences
         updatedPreferences.observationWindowMinutes = minutes
         updatePreferences(updatedPreferences)
@@ -346,6 +351,7 @@ final class AppModel: ObservableObject {
     }
 
     func setScreenpipeRetention(days: Int) {
+        guard AppPreferences.screenpipeRetentionOptions.contains(days) else { return }
         var updatedPreferences = preferences
         updatedPreferences.screenpipeRetentionDays = days
         updatePreferences(updatedPreferences)
@@ -356,9 +362,13 @@ final class AppModel: ObservableObject {
         AppPreferencesStore.save(updatedPreferences)
 
         let policy = ActivityTrackingPolicy(preferences: updatedPreferences)
-        Task {
+        let previousSync = preferenceSyncTask
+        let runtimeController = runtimeController
+        preferenceSyncTask = Task { [weak self] in
+            await previousSync?.value
             await runtimeController.updateTrackingPolicy(policy)
-            await refreshRuntime(notifyOnReturn: false)
+            guard let self else { return }
+            await self.refreshRuntime(notifyOnReturn: false)
         }
     }
 

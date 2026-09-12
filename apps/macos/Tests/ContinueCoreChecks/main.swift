@@ -16,6 +16,26 @@ private enum CheckFailure: Error, CustomStringConvertible {
 @main
 struct ContinueCoreChecks {
     static func main() async throws {
+        if CommandLine.arguments.count == 3,
+           CommandLine.arguments[1] == "--write-runtime-control"
+        {
+            await writeRuntimeControl(
+                to: URL(fileURLWithPath: CommandLine.arguments[2])
+            )
+            print("ContinueCoreChecks: Swift runtime control write passed")
+            return
+        }
+
+        if CommandLine.arguments.count == 3,
+           CommandLine.arguments[1] == "--verify-runtime-state"
+        {
+            try await verifyRuntimeState(
+                at: URL(fileURLWithPath: CommandLine.arguments[2])
+            )
+            print("ContinueCoreChecks: Swift runtime state read passed")
+            return
+        }
+
         if CommandLine.arguments.count == 4,
            CommandLine.arguments[1] == "--verify-external-database"
         {
@@ -55,6 +75,37 @@ struct ContinueCoreChecks {
         try integrationConfigurationHonorsOverrides()
 
         print("ContinueCoreChecks: 26 checks passed")
+    }
+
+    private static func writeRuntimeControl(to databaseURL: URL) async {
+        let provider = SQLiteRuntimeProvider(databaseURL: databaseURL)
+        let policy = ActivityTrackingPolicy(
+            captureEnabled: true,
+            summariesEnabled: true,
+            checkpointTrigger: .manual,
+            idleThresholdMinutes: 11,
+            observationWindowMinutes: 15,
+            schedule: TrackingSchedule(isEnabled: true, startHour: 8, endHour: 20),
+            excludedApplications: ["Messages"],
+            checkpointRetentionDays: 30,
+            screenpipeRetentionDays: 0
+        )
+
+        await provider.updateTrackingPolicy(policy)
+        await provider.markSteppingAway()
+    }
+
+    private static func verifyRuntimeState(at databaseURL: URL) async throws {
+        let provider = SQLiteRuntimeProvider(databaseURL: databaseURL)
+        let snapshot = await provider.snapshot()
+
+        try expect(snapshot.phase == .returning, "Swift must read the worker's returning phase")
+        try expect(snapshot.captureStatus == .recording, "Swift must read the worker's recording status")
+        try expect(
+            snapshot.statusMessage == "Return activity detected",
+            "Swift must preserve the worker's runtime status message"
+        )
+        try expect(snapshot.lastActivityAt != nil, "Swift must decode the worker's last-activity timestamp")
     }
 
     private static func verifyExternalDatabase(
@@ -288,12 +339,20 @@ struct ContinueCoreChecks {
             "An enabled away-to-return transition must produce a return notification"
         )
         try expect(
-            !RuntimeTransition.shouldNotifyReturn(
+            RuntimeTransition.shouldNotifyReturn(
                 previous: .observing,
                 current: .returning,
                 summariesEnabled: true
             ),
-            "Opening a returning snapshot must not produce a duplicate notification"
+            "Polling must notify even when it did not observe the brief away state"
+        )
+        try expect(
+            !RuntimeTransition.shouldNotifyReturn(
+                previous: .returning,
+                current: .returning,
+                summariesEnabled: true
+            ),
+            "A persistent returning snapshot must not produce a duplicate notification"
         )
         try expect(
             !RuntimeTransition.shouldNotifyReturn(
@@ -441,6 +500,23 @@ struct ContinueCoreChecks {
         try expect(
             decoded.screenpipeRetentionDays == 0,
             "Legacy payloads must default Screenpipe retention"
+        )
+
+        let legacyPolicy = """
+        {"captureEnabled":true,"summariesEnabled":false,"idleThresholdMinutes":9}
+        """
+        let decodedPolicy = try JSONDecoder().decode(
+            ActivityTrackingPolicy.self,
+            from: Data(legacyPolicy.utf8)
+        )
+        try expect(!decodedPolicy.summariesEnabled, "Legacy policies must retain stored values")
+        try expect(
+            decodedPolicy.checkpointRetentionDays == 7,
+            "Legacy policies must default checkpoint retention"
+        )
+        try expect(
+            decodedPolicy.checkpointTrigger == .automaticAndManual,
+            "Legacy policies must default the checkpoint trigger"
         )
     }
 

@@ -39,7 +39,7 @@ public enum RuntimeTransition {
         current: RuntimePhase,
         summariesEnabled: Bool
     ) -> Bool {
-        summariesEnabled && previous == .away && current == .returning
+        summariesEnabled && previous != .returning && current == .returning
     }
 }
 

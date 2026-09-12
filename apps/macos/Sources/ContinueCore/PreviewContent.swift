@@ -108,6 +108,7 @@ public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling {
             observationWindowMinutes: trackingPolicy.observationWindowMinutes,
             schedule: trackingPolicy.schedule,
             excludedApplications: trackingPolicy.excludedApplications,
+            checkpointRetentionDays: trackingPolicy.checkpointRetentionDays,
             screenpipeRetentionDays: trackingPolicy.screenpipeRetentionDays
         )
 
@@ -130,6 +131,7 @@ public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling {
             observationWindowMinutes: trackingPolicy.observationWindowMinutes,
             schedule: trackingPolicy.schedule,
             excludedApplications: trackingPolicy.excludedApplications,
+            checkpointRetentionDays: trackingPolicy.checkpointRetentionDays,
             screenpipeRetentionDays: trackingPolicy.screenpipeRetentionDays
         )
 
