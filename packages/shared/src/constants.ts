@@ -1,0 +1,1 @@
+export const DEFAULT_AWAY_THRESHOLD_MINUTES = 15;

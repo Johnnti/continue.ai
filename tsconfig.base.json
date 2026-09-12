@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@continue/shared": ["packages/shared/src/index.ts"],
+      "@continue/screenpipe": ["packages/screenpipe/src/index.ts"],
+      "@continue/context-engine": ["packages/context-engine/src/index.ts"],
+      "@continue/memory": ["packages/memory/src/index.ts"],
+      "@continue/voice": ["packages/voice/src/index.ts"],
+      "@continue/workspace": ["packages/workspace/src/index.ts"]
+    }
+  }
+}
