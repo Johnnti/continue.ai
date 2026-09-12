@@ -13,7 +13,7 @@ export default async function Page() {
       <h1>continue.ai</h1>
       <p className="muted">Local-first context resume assistant</p>
       <ActivityStatus state="returning" />
-      <VoiceOrb />
+      <VoiceOrb checkpoint={checkpoint} />
       <SessionCard checkpoint={checkpoint} />
       <ResumeButton />
       <PrivacyIndicator />
