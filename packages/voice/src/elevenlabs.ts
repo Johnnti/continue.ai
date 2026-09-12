@@ -17,8 +17,8 @@ export function buildReturnBriefing(checkpoint: SessionCheckpoint): string {
 export async function sendCheckpointToElevenLabs(checkpoint: SessionCheckpoint): Promise<{ ok: boolean; message: string }> {
   if (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_AGENT_ID) {
     return {
-      ok: true,
-      message: "ElevenLabs keys not configured. Running in mock mode."
+      ok: false,
+      message: "ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID are required"
     };
   }
 

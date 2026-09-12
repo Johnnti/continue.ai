@@ -1,7 +1,7 @@
 export function PrivacyIndicator() {
   return (
     <div className="card muted">
-      Screenpipe captures local activity. continue.ai stores interpreted checkpoints only.
+      ScreenCaptureKit captures your display locally. continue.ai sends screenshots to your configured LLM and stores interpreted checkpoints.
     </div>
   );
 }

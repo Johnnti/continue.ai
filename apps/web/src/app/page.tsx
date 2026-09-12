@@ -1,5 +1,6 @@
 import { ActivityStatus } from "../components/ActivityStatus";
 import { PrivacyIndicator } from "../components/PrivacyIndicator";
+import { RecordingControls } from "../components/RecordingControls";
 import { ResumeButton } from "../components/ResumeButton";
 import { SessionCard } from "../components/SessionCard";
 import { VoiceOrb } from "../components/VoiceOrb";
@@ -14,7 +15,8 @@ export default async function Page() {
       <p className="muted">Local-first context resume assistant</p>
       <ActivityStatus state="returning" />
       <VoiceOrb />
-      <SessionCard checkpoint={checkpoint} />
+      <RecordingControls />
+      {checkpoint ? <SessionCard checkpoint={checkpoint} /> : <p className="muted">No activity profile has been captured yet.</p>}
       <ResumeButton />
       <PrivacyIndicator />
     </main>

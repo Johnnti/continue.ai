@@ -1,12 +1,14 @@
+import path from "node:path";
+import { loadEnvFile } from "node:process";
 import { logger } from "@continue/shared";
-import { tick } from "./scheduler";
+import { runActivityProfile } from "./scheduler";
 
-async function main() {
-  const state = await tick("away");
-  logger.info("Worker tick complete", { state });
+try {
+  loadEnvFile(path.resolve(process.cwd(), "../../.env"));
+} catch {
 }
 
-main().catch((error) => {
-  logger.error("Worker failed", error);
+runActivityProfile().catch((error) => {
+  logger.error("Activity profile worker failed", error);
   process.exitCode = 1;
 });

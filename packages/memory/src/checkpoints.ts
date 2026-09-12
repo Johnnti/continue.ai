@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 import type { SessionCheckpoint } from "@continue/shared";
 import type { CheckpointStore } from "./types";
@@ -13,7 +14,20 @@ async function readCheckpoints(storagePath: string): Promise<SessionCheckpoint[]
   }
 }
 
-export function createJsonCheckpointStore(storagePath = path.resolve(process.cwd(), "data/checkpoints.json")): CheckpointStore {
+function findRepositoryRoot(startPath: string): string {
+  let currentPath = path.resolve(startPath);
+  while (currentPath !== path.dirname(currentPath)) {
+    if (fsSync.existsSync(path.join(currentPath, "pnpm-workspace.yaml"))) {
+      return currentPath;
+    }
+    currentPath = path.dirname(currentPath);
+  }
+  return path.resolve(startPath);
+}
+
+const defaultStoragePath = path.join(findRepositoryRoot(process.cwd()), "data/checkpoints.json");
+
+export function createJsonCheckpointStore(storagePath = defaultStoragePath): CheckpointStore {
   return {
     async save(checkpoint: SessionCheckpoint): Promise<void> {
       const current = await readCheckpoints(storagePath);
