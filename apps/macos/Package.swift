@@ -8,12 +8,24 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "ContinueApp", targets: ["ContinueApp"])
+        .library(name: "ContinueCore", targets: ["ContinueCore"]),
+        .executable(name: "ContinueApp", targets: ["ContinueApp"]),
+        .executable(name: "ContinueCoreChecks", targets: ["ContinueCoreChecks"])
     ],
     targets: [
+        .target(
+            name: "ContinueCore",
+            path: "Sources/ContinueCore"
+        ),
         .executableTarget(
             name: "ContinueApp",
+            dependencies: ["ContinueCore"],
             path: "Sources/ContinueApp"
+        ),
+        .executableTarget(
+            name: "ContinueCoreChecks",
+            dependencies: ["ContinueCore"],
+            path: "Tests/ContinueCoreChecks"
         )
     ]
 )
