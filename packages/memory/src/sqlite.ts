@@ -39,7 +39,10 @@ function findRepositoryRoot(startPath: string): string {
 }
 
 function defaultDatabasePath(): string {
-  const configuredPath = process.env.CONTINUE_MEMORY_PATH?.trim();
+  const configuredPath = (
+    process.env.CONTINUE_MEMORY_DATABASE_PATH
+    ?? process.env.CONTINUE_MEMORY_PATH
+  )?.trim();
   if (configuredPath) return path.resolve(configuredPath);
   return path.join(findRepositoryRoot(process.cwd()), "data/memory.sqlite");
 }
