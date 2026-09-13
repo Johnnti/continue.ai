@@ -7,14 +7,18 @@ struct ContinueDesktopApp: App {
     @StateObject private var model: AppModel
 
     init() {
-        NSApplication.shared.setActivationPolicy(.accessory)
-        let runtimeProvider = PreviewRuntimeProvider()
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        let runtimeProvider = BackendRuntimeProvider()
+        let checkpointProvider = BackendCheckpointProvider()
         _model = StateObject(
             wrappedValue: AppModel(
                 runtimeProvider: runtimeProvider,
                 runtimeController: runtimeProvider,
-                checkpointProvider: PreviewCheckpointProvider(),
-                voiceProvider: PreviewVoiceProvider(),
+                captureController: runtimeProvider,
+                checkpointProvider: checkpointProvider,
+                summaryGenerator: checkpointProvider,
+                voiceProvider: ElevenLabsVoiceProvider(),
                 resumeProvider: PreviewResumeProvider(),
                 returnNotifier: SystemReturnNotifier()
             )

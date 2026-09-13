@@ -14,9 +14,17 @@ public protocol RuntimeControlling: Sendable {
     func setSummariesEnabled(_ isEnabled: Bool) async
 }
 
+public protocol CaptureControlling: Sendable {
+    func setCaptureEnabled(_ isEnabled: Bool) async throws
+}
+
 public protocol CheckpointProviding: Sendable {
     func latest() async throws -> Checkpoint?
     func history(limit: Int) async throws -> [Checkpoint]
+}
+
+public protocol SummaryGenerating: Sendable {
+    func generateSummary() async throws
 }
 
 public protocol VoiceProviding: Sendable {

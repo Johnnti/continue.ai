@@ -76,7 +76,7 @@ public enum PreviewContent {
     ]
 }
 
-public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling {
+public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling, CaptureControlling {
     private var currentSnapshot: RuntimeSnapshot
 
     public init(snapshot: RuntimeSnapshot = PreviewContent.runtimeSnapshot) {
@@ -103,6 +103,17 @@ public actor PreviewRuntimeProvider: RuntimeProviding, RuntimeControlling {
             statusMessage: isEnabled
                 ? "Continue summaries resumed \u{00B7} Screenpipe is still recording"
                 : "Continue summaries paused \u{00B7} Screenpipe is still recording",
+            lastActivityAt: currentSnapshot.lastActivityAt
+        )
+    }
+
+    public func setCaptureEnabled(_ isEnabled: Bool) async {
+        currentSnapshot = RuntimeSnapshot(
+            phase: currentSnapshot.phase,
+            captureStatus: isEnabled ? .recording : .paused,
+            statusMessage: isEnabled
+                ? "Preview capture is recording"
+                : "Preview capture is paused",
             lastActivityAt: currentSnapshot.lastActivityAt
         )
     }

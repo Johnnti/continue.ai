@@ -12,6 +12,12 @@ let package = Package(
         .executable(name: "ContinueApp", targets: ["ContinueApp"]),
         .executable(name: "ContinueCoreChecks", targets: ["ContinueCoreChecks"])
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/elevenlabs/elevenlabs-swift-sdk.git",
+            exact: "3.3.1"
+        )
+    ],
     targets: [
         .target(
             name: "ContinueCore",
@@ -22,7 +28,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "ContinueApp",
-            dependencies: ["ContinueCore"],
+            dependencies: [
+                "ContinueCore",
+                .product(name: "ElevenLabs", package: "elevenlabs-swift-sdk")
+            ],
             path: "Sources/ContinueApp"
         ),
         .executableTarget(

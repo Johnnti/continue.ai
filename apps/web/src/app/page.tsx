@@ -5,9 +5,13 @@ import { ResumeButton } from "../components/ResumeButton";
 import { SessionCard } from "../components/SessionCard";
 import { VoiceOrb } from "../components/VoiceOrb";
 import { getLatestCheckpoint } from "../lib/api";
+import { buildReturnBriefing, getElevenLabsAgentId } from "@continue/voice";
+
+export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const checkpoint = await getLatestCheckpoint();
+  const elevenLabsAgentId = getElevenLabsAgentId();
 
   return (
     <main>
@@ -16,8 +20,13 @@ export default async function Page() {
       <ActivityStatus state="returning" />
       <RecordingControls />
       {checkpoint ? <SessionCard checkpoint={checkpoint} /> : <p className="muted">No activity profile has been captured yet.</p>}
-      {checkpoint && <VoiceOrb checkpoint={checkpoint} />}
-      {checkpoint && <SessionCard checkpoint={checkpoint} />}
+      {checkpoint && (
+        <VoiceOrb
+          agentId={elevenLabsAgentId}
+          briefing={buildReturnBriefing(checkpoint)}
+          checkpoint={checkpoint}
+        />
+      )}
       <ResumeButton />
       <PrivacyIndicator />
     </main>

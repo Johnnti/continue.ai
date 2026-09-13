@@ -26,6 +26,9 @@ importers:
       '@continue/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      '@continue/screenpipe':
+        specifier: workspace:*
+        version: link:../../packages/screenpipe
       '@continue/shared':
         specifier: workspace:*
         version: link:../../packages/shared

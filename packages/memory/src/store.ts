@@ -1,3 +1,3 @@
-import { createJsonCheckpointStore } from "./checkpoints";
+import { createSqliteCheckpointStore } from "./sqlite";
 
-export const createCheckpointStore = createJsonCheckpointStore;
+export const createCheckpointStore = createSqliteCheckpointStore;

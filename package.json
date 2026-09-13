@@ -8,7 +8,8 @@
     "dev:web": "corepack pnpm --filter @continue/web dev",
     "dev:worker": "corepack pnpm --filter @continue/worker dev",
     "build": "pnpm -r build",
-    "typecheck": "corepack pnpm -r typecheck"
+    "typecheck": "corepack pnpm -r typecheck",
+    "verify:memory": "node --import tsx scripts/verify-memory.ts"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",

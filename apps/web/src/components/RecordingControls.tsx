@@ -5,6 +5,7 @@ import type { KeyActivity } from "@continue/shared";
 
 interface RecordingStatus {
   recording: boolean;
+  processing: boolean;
   capturesProcessed: number;
   pendingCaptures: number;
   sessionStartedAt: string | null;
@@ -22,6 +23,7 @@ interface RecordingStatus {
 export function RecordingControls() {
   const [status, setStatus] = useState<RecordingStatus>({
     recording: false,
+    processing: false,
     capturesProcessed: 0,
     pendingCaptures: 0,
     sessionStartedAt: null,
@@ -35,11 +37,14 @@ export function RecordingControls() {
   const [error, setError] = useState("");
 
   async function refreshStatus() {
-    const response = await fetch("/api/record/status", { cache: "no-store" });
-    if (response.ok) {
-      const nextStatus = await response.json() as RecordingStatus;
+    try {
+      const response = await fetch("/api/record/status", { cache: "no-store" });
+      const nextStatus = await response.json() as RecordingStatus & { error?: string };
+      if (!response.ok) throw new Error(nextStatus.error ?? "Unable to read recording status");
       setStatus(nextStatus);
       if (nextStatus.lastError) setError(nextStatus.lastError);
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : "Unable to read recording status");
     }
   }
 
@@ -53,18 +58,26 @@ export function RecordingControls() {
     setError("");
     setParagraph("");
     setKeyActivities([]);
-    const response = await fetch("/api/record/start", { method: "POST" });
-    const result = await response.json();
-    setStatus(result);
-    if (!response.ok) setError(result.error ?? "Unable to start recording");
+    try {
+      const response = await fetch("/api/record/start", { method: "POST" });
+      const result = await response.json() as RecordingStatus & { error?: string };
+      setStatus(result);
+      if (!response.ok) setError(result.error ?? "Unable to start recording");
+    } catch (startError) {
+      setError(startError instanceof Error ? startError.message : "Unable to start recording");
+    }
   }
 
   async function stop() {
     setError("");
-    const response = await fetch("/api/record/stop", { method: "POST" });
-    const result = await response.json();
-    setStatus(result);
-    if (!response.ok) setError(result.error ?? "Unable to stop recording");
+    try {
+      const response = await fetch("/api/record/stop", { method: "POST" });
+      const result = await response.json() as RecordingStatus & { error?: string };
+      setStatus(result);
+      if (!response.ok) setError(result.error ?? "Unable to stop recording");
+    } catch (stopError) {
+      setError(stopError instanceof Error ? stopError.message : "Unable to stop recording");
+    }
   }
 
   async function generateSummary() {
@@ -90,6 +103,8 @@ export function RecordingControls() {
       <p className="muted">
         {status.recording
           ? `Recording: ${status.capturesProcessed} captured, ${status.pendingCaptures} awaiting summary`
+          : status.processing
+            ? "Finishing the latest activity summary…"
           : "Recording stopped"}
       </p>
       {status.latestCapture && (
@@ -99,7 +114,7 @@ export function RecordingControls() {
           {status.latestCapture.displayName ? ` on ${status.latestCapture.displayName}` : ""}
         </p>
       )}
-      <button onClick={start} disabled={status.recording}>Start</button>{" "}
+      <button onClick={start} disabled={status.recording || status.processing}>Start</button>{" "}
       <button onClick={stop} disabled={!status.recording}>Stop</button>{" "}
       <button onClick={generateSummary} disabled={loading}>
         {loading ? "Loading..." : "Show latest summary"}

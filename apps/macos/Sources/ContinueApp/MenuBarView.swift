@@ -19,6 +19,11 @@ struct MenuBarView: View {
 
         Divider()
 
+        Button(captureButtonTitle, systemImage: captureButtonIcon) {
+            model.toggleCapture()
+        }
+        .disabled(model.isUpdatingCapture || model.runtime.captureStatus == .checking)
+
         Button("I'm stepping away", systemImage: "figure.walk.departure") {
             model.markSteppingAway()
         }
@@ -81,5 +86,22 @@ struct MenuBarView: View {
         case let .unavailable(reason):
             "Screenpipe recording: Off (\(reason))"
         }
+    }
+
+    private var captureButtonTitle: String {
+        if model.isUpdatingCapture {
+            return model.runtime.captureStatus == .recording ? "Stopping recording…" : "Starting recording…"
+        }
+        if case .recording = model.runtime.captureStatus {
+            return "Stop recording"
+        }
+        return "Start recording"
+    }
+
+    private var captureButtonIcon: String {
+        if case .recording = model.runtime.captureStatus, !model.isUpdatingCapture {
+            return "stop.fill"
+        }
+        return "record.circle"
     }
 }

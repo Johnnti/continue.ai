@@ -1,10 +1,12 @@
-import { createScreenCaptureClient } from "@continue/screenpipe";
+import { createScreenCaptureClient, type ScreenCaptureClient } from "@continue/screenpipe";
 import { summarizeCaptureBatch } from "@continue/context-engine";
 import { createCheckpointStore } from "@continue/memory";
 import { logger, type ActivityEvent, type SessionCheckpoint } from "@continue/shared";
 
 interface RecorderState {
   iterator: AsyncGenerator<ActivityEvent> | null;
+  captureClient: ScreenCaptureClient | null;
+  processingTask: Promise<void> | null;
   recording: boolean;
   capturesProcessed: number;
   lastError: string | null;
@@ -24,6 +26,8 @@ interface RecorderState {
 const recorderGlobal = globalThis as typeof globalThis & { __continueRecorder?: RecorderState };
 const state = recorderGlobal.__continueRecorder ?? {
   iterator: null,
+  captureClient: null,
+  processingTask: null,
   recording: false,
   capturesProcessed: 0,
   lastError: null,
@@ -41,10 +45,13 @@ state.pendingCaptures ??= [];
 state.currentCheckpoint ??= null;
 state.summaryPromise ??= null;
 state.latestCapture ??= null;
+state.processingTask ??= null;
+state.captureClient ??= null;
 
 export function getRecordingStatus() {
   return {
     recording: state.recording,
+    processing: state.processingTask !== null,
     capturesProcessed: state.capturesProcessed,
     pendingCaptures: state.pendingCaptures.length,
     sessionStartedAt: state.sessionStartedAt,
@@ -54,8 +61,15 @@ export function getRecordingStatus() {
   };
 }
 
+export function getCurrentSessionCheckpoint() {
+  return {
+    hasCurrentSession: state.sessionStartedAt !== null,
+    checkpoint: state.currentCheckpoint
+  };
+}
+
 export function startRecording(): boolean {
-  if (state.recording) return false;
+  if (state.recording || state.processingTask) return false;
   state.recording = true;
   state.capturesProcessed = 0;
   state.lastError = null;
@@ -67,18 +81,31 @@ export function startRecording(): boolean {
   const captureClient = createScreenCaptureClient();
   const captureIterator = captureClient.captures();
   state.iterator = captureIterator;
-  void processCaptures(captureIterator).catch((error) => {
-    state.lastError = error instanceof Error ? error.message : "The screen capture helper failed";
-    logger.error("Screen recording failed", error);
-  });
+  state.captureClient = captureClient;
+  const processingTask = processCaptures(captureIterator);
+  state.processingTask = processingTask;
+  void processingTask
+    .catch((error) => {
+      state.lastError ??= error instanceof Error ? error.message : "The screen capture helper failed";
+      logger.error("Screen recording failed", error);
+    })
+    .finally(() => {
+      if (state.processingTask === processingTask) state.processingTask = null;
+    });
   return true;
 }
 
 export async function stopRecording(): Promise<boolean> {
   if (!state.recording) return false;
   state.recording = false;
-  await state.iterator?.return(undefined);
+  const iterator = state.iterator;
+  const processingTask = state.processingTask;
+  state.captureClient?.stop();
+  await iterator?.return(undefined);
+  await processingTask?.catch(() => undefined);
+  if (state.processingTask === processingTask) state.processingTask = null;
   state.iterator = null;
+  state.captureClient = null;
   return true;
 }
 
@@ -110,11 +137,15 @@ async function processCaptures(captureIterator: AsyncGenerator<ActivityEvent>) {
       try {
         await persistEpisode([...state.pendingCaptures]);
       } catch (error) {
+        state.lastError ??= error instanceof Error
+          ? error.message
+          : "Unable to summarize the final partial activity episode";
         logger.error("Unable to summarize the final partial activity episode", error);
       }
     }
     state.recording = false;
     state.iterator = null;
+    state.captureClient = null;
   }
 }
 

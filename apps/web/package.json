@@ -12,6 +12,7 @@
   "dependencies": {
     "@continue/context-engine": "workspace:*",
     "@continue/memory": "workspace:*",
+    "@continue/screenpipe": "workspace:*",
     "@continue/shared": "workspace:*",
     "@continue/voice": "workspace:*",
     "@continue/workspace": "workspace:*",

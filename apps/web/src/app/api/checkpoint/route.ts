@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
-import { getLatestCheckpoint } from "../../../lib/api";
+import { createCheckpointStore } from "@continue/memory";
+import { getCurrentSessionCheckpoint } from "../../../lib/recorder";
 
 export async function GET() {
-  const checkpoint = await getLatestCheckpoint();
-  return NextResponse.json({ checkpoint });
+  const store = createCheckpointStore();
+  const checkpoints = await store.getRecent(20);
+  const current = getCurrentSessionCheckpoint();
+  const checkpoint = current.hasCurrentSession
+    ? current.checkpoint
+    : checkpoints[0] ?? null;
+  return NextResponse.json({ checkpoint, checkpoints });
 }

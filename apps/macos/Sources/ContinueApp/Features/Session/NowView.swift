@@ -13,8 +13,12 @@ struct NowView: View {
                 appHeader
                 CaptureStatusStrip(
                     snapshot: model.runtime,
-                    summariesEnabled: model.preferences.interpretationEnabled
+                    summariesEnabled: model.preferences.interpretationEnabled,
+                    isUpdating: model.isUpdatingCapture,
+                    errorMessage: model.captureErrorMessage,
+                    onToggleRecording: model.toggleCapture
                 )
+                SummaryActionStrip(model: model)
                 VoiceConversationPanel(model: model)
                 content
                 PrivacyNotice()
@@ -73,7 +77,7 @@ struct NowView: View {
 
             Spacer()
 
-            Text("PREVIEW DATA")
+            Text("LIVE RECORDING")
                 .font(.caption2.weight(.semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
@@ -157,6 +161,9 @@ private struct VoiceConversationPanel: View {
             VStack(spacing: 5) {
                 Text("Voice conversation")
                     .font(.title3.weight(.semibold))
+                Text("ElevenLabs voice · starts only when you choose")
+                    .font(.caption)
+                    .foregroundStyle(ContinueTheme.accent)
                 Text(statusText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -244,9 +251,62 @@ private struct VoiceConversationPanel: View {
     }
 }
 
+private struct SummaryActionStrip: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Label("Live checkpoint summaries", systemImage: "sparkles")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(ContinueTheme.accent)
+
+                Spacer()
+
+                Button {
+                    model.generateSummary()
+                } label: {
+                    if model.isGeneratingSummary {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Generate summary", systemImage: "wand.and.stars")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(model.isGeneratingSummary || model.isLoading)
+                .accessibilityIdentifier("summary.generate")
+            }
+
+            Text("Summaries use the activity already captured by the local web backend.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let errorMessage = model.summaryErrorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(.primary.opacity(0.08))
+        }
+        .accessibilityIdentifier("summary.action-strip")
+    }
+}
+
 private struct CaptureStatusStrip: View {
     let snapshot: RuntimeSnapshot
     let summariesEnabled: Bool
+    let isUpdating: Bool
+    let errorMessage: String?
+    let onToggleRecording: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -268,12 +328,27 @@ private struct CaptureStatusStrip: View {
                 Text(phaseLabel)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+
+                Button(recordingButtonTitle, systemImage: recordingButtonIcon) {
+                    onToggleRecording()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(isUpdating || snapshot.captureStatus == .checking)
+                .accessibilityIdentifier("capture.toggle-recording")
             }
             .font(.subheadline.weight(.medium))
 
             Text(snapshot.statusMessage)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
@@ -336,6 +411,23 @@ private struct CaptureStatusStrip: View {
             "Welcome back"
         }
     }
+
+    private var recordingButtonTitle: String {
+        if isUpdating {
+            return snapshot.captureStatus == .recording ? "Stopping…" : "Starting…"
+        }
+        if case .recording = snapshot.captureStatus {
+            return "Stop recording"
+        }
+        return "Start recording"
+    }
+
+    private var recordingButtonIcon: String {
+        if case .recording = snapshot.captureStatus, !isUpdating {
+            return "stop.fill"
+        }
+        return "record.circle"
+    }
 }
 
 private struct CheckpointCard: View {
@@ -359,7 +451,7 @@ private struct CheckpointCard: View {
                     .font(.system(size: 30, weight: .semibold, design: .rounded))
                     .textSelection(.enabled)
 
-                Text("You were away for \(checkpoint.awayDurationMinutes) minutes · saved \(checkpoint.createdAt.formatted(date: .omitted, time: .shortened))")
+                Text(checkpointTimingLabel)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -374,7 +466,7 @@ private struct CheckpointCard: View {
 
             HStack(alignment: .top, spacing: 28) {
                 CheckpointList(
-                    title: "Completed",
+                    title: checkpoint.isPreview ? "Completed" : "Last action",
                     systemImage: "checkmark.circle",
                     items: checkpoint.completed
                 )
@@ -420,22 +512,28 @@ private struct CheckpointCard: View {
                 }
                 .buttonStyle(.bordered)
 
-                Button {
-                    onReopenMissingItem()
-                } label: {
-                    if isPreparingResume {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Label("Something closed?", systemImage: "plus.square.on.square")
+                if checkpoint.isPreview {
+                    Button {
+                        onReopenMissingItem()
+                    } label: {
+                        if isPreparingResume {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Label("Something closed?", systemImage: "plus.square.on.square")
+                        }
                     }
+                    .buttonStyle(.bordered)
+                    .disabled(isPreparingResume || checkpoint.resumeTargets.isEmpty)
+                    .accessibilityLabel(
+                        isPreparingResume ? "Preparing preview missing-item review" : "Reopen a missing item preview"
+                    )
+                    .accessibilityIdentifier("resume.review")
+                } else {
+                    Label("Resume preview is disabled for live checkpoints", systemImage: "eye.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.bordered)
-                .disabled(isPreparingResume || checkpoint.resumeTargets.isEmpty)
-                .accessibilityLabel(
-                    isPreparingResume ? "Preparing missing-item review" : "Reopen a missing item"
-                )
-                .accessibilityIdentifier("resume.review")
 
                 Spacer()
 
@@ -459,6 +557,14 @@ private struct CheckpointCard: View {
                 .stroke(.primary.opacity(0.09))
         }
         .shadow(color: .black.opacity(0.06), radius: 18, y: 8)
+    }
+
+    private var checkpointTimingLabel: String {
+        let time = checkpoint.createdAt.formatted(date: .omitted, time: .shortened)
+        if checkpoint.isPreview {
+            return "You were away for \(checkpoint.awayDurationMinutes) minutes · saved \(time)"
+        }
+        return "Summarized \(checkpoint.awayDurationMinutes) minute\(checkpoint.awayDurationMinutes == 1 ? "" : "s") of activity · saved \(time)"
     }
 }
 
@@ -539,7 +645,7 @@ private struct CheckpointList: View {
 private struct PrivacyNotice: View {
     var body: some View {
         Label(
-            "Screenpipe keeps raw activity local. Continue stores interpreted checkpoints, not screenshots or microphone audio.",
+            "Captured screenshots are sent to your configured LLM for interpretation. Checkpoints stay local; voice sends only the compact summary context to ElevenLabs after you start a conversation.",
             systemImage: "lock.shield"
         )
         .font(.caption)

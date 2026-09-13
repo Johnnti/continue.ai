@@ -1,9 +1,9 @@
 # continue.ai
 
-Continue is a local-first context-resume assistant. The repository contains a
-fixture-backed native macOS preview and a separate web harness. The macOS
-preview presents a voice-first return checkpoint without focusing another app,
-reopening windows, or writing raw screen/audio data to Continue's store.
+Continue is a context-resume assistant with a native macOS client and a local
+web service. The service captures screen activity in bounded batches, sends the
+screenshots and a privacy-filtered activity timeline to the configured vision
+model, and stores the resulting checkpoint summaries locally.
 
 The product decisions are recorded in
 [`docs/PRODUCT_DECISIONS.md`](docs/PRODUCT_DECISIONS.md). The longer research
@@ -22,22 +22,35 @@ Requirements:
 From the repository root, run:
 
 ```bash
-swift run --package-path apps/macos ContinueApp
+apps/macos/scripts/run-app.sh
 ```
 
-The command builds the Swift package, opens the Continue window, and adds a
-Continue item to the menu bar. Keep the terminal process running while using
-the preview; press `Control-C` to stop it.
+The launcher builds the Swift package into an ignored local `Continue.app`
+bundle, closes only an existing instance of that bundle, and opens the focused
+Continue window with its menu-bar item. Quit Continue from the app or its
+menu-bar item when you finish.
 
-The current native client is intentionally fixture-backed. `ContinueDesktopApp`
-injects `PreviewRuntimeProvider`, `PreviewCheckpointProvider`,
-`PreviewVoiceProvider`, and `PreviewResumeProvider`, so the window can be
-reviewed without Screenpipe, model credentials, a live voice SDK, a database,
-or a real workspace opener. The `PREVIEW DATA` label identifies this state.
+The native client uses the local web harness for live recording status and
+Start/Stop capture commands. Start the web harness in a second terminal before
+using those controls:
+
+```bash
+corepack pnpm dev:web
+```
+
+Checkpoint summaries, persistent SQLite memory, and ElevenLabs voice are live.
+Workspace resume remains a preview adapter. Set `OPENAI_API_KEY` in the
+repository `.env` before recording and `ELEVENLABS_AGENT_ID` before starting
+voice. Set `CONTINUE_BACKEND_URL` when the web harness is not at the default
+`http://127.0.0.1:3000`; the launcher records these values in the local app
+bundle so LaunchServices preserves them.
 
 Useful native commands:
 
 ```bash
+# Build and open the local macOS app bundle.
+apps/macos/scripts/run-app.sh
+
 # Compile only the desktop executable.
 swift build --package-path apps/macos --product ContinueApp
 
@@ -82,11 +95,10 @@ whole desktop when it contains unrelated personal or collaborator content.
 
 ## Architecture
 
-The native preview keeps the SwiftUI composition layer separate from service
+The native client keeps the SwiftUI composition layer separate from service
 implementations. `AppModel` runs on the main actor, owns view state, and sends
-user intents through narrow protocols. The preview adapters implement those
-same protocols with deterministic data so the UI can be tested before live
-Screenpipe, model, voice, persistence, and resume integrations land.
+user intents through narrow protocols. Runtime and checkpoint adapters talk to
+the local web service. Voice and resume adapters are still previews.
 
 ```mermaid
 flowchart TD
@@ -106,23 +118,24 @@ flowchart TD
     Model --> Resume["ResumeProviding"]
     Model --> Notify["ReturnNotifying"]
 
-    subgraph Preview["Current fixture-backed adapters"]
-        PreviewRuntime["PreviewRuntimeProvider"]
-        PreviewCheckpoints["PreviewCheckpointProvider"]
-        PreviewVoice["PreviewVoiceProvider"]
+    subgraph Adapters["Current adapters"]
+        BackendRuntime["BackendRuntimeProvider<br/>local recording routes"]
+        BackendCheckpoints["BackendCheckpointProvider<br/>local checkpoint routes"]
+        ElevenLabsVoice["ElevenLabsVoiceProvider"]
         PreviewResume["PreviewResumeProvider"]
         SystemNotify["SystemReturnNotifier"]
     end
 
-    Runtime -. implements .-> PreviewRuntime
-    Checkpoints -. implements .-> PreviewCheckpoints
-    Voice -. implements .-> PreviewVoice
+    Runtime -. implements .-> BackendRuntime
+    Checkpoints -. implements .-> BackendCheckpoints
+    Voice -. implements .-> ElevenLabsVoice
     Resume -. implements .-> PreviewResume
     Notify -. implements .-> SystemNotify
 
-    Screenpipe["Screenpipe local API<br/>planned live adapter"] -. bounded observations .-> Runtime
-    Store["Checkpoint store<br/>planned persistence"] -. validated records .-> Checkpoints
-    VoiceSDK["ElevenLabs Swift SDK<br/>planned live adapter"] -. session state + levels .-> Voice
+    Capture["macOS capture helper"] --> Context["Vision model<br/>batched images + activity"]
+    Context --> Store["SQLite memory<br/>full-text checkpoint index"]
+    Store --> BackendCheckpoints
+    VoiceSDK["ElevenLabs Swift SDK<br/>public agent session"] --> ElevenLabsVoice
     Workspace["Approved workspace opener<br/>planned live adapter"] -. selected targets only .-> Resume
 ```
 
@@ -154,3 +167,57 @@ The optional demo seed is:
 ```bash
 pnpm seed:demo
 ```
+
+## ElevenLabs voice and text conversations
+
+Create a public ElevenLabs agent, then add only its ID to the repository-level
+`.env` file:
+
+```bash
+ELEVENLABS_AGENT_ID="agent_..."
+```
+
+Restart `pnpm dev:web`. When a checkpoint exists, **Read summary aloud** starts
+an explicit microphone session and asks the agent to speak the same committed
+summary shown on screen. **Start text chat**, or submitting a typed question
+while disconnected, starts a text-only session without requesting microphone
+access. The transcript remains visible below the controls.
+
+The app injects the current checkpoint and the 20 most recent checkpoints when
+each conversation starts, so the current briefing and recent-history questions
+work without editing the agent prompt. It passes `current_briefing`, `summary`,
+`project`, `task`, `current_task`, `last_action`, and `next_action` as dynamic
+variables as well, for agents that use them in a first message or prompt.
+
+For history that grows beyond the initial context, add these case-sensitive
+**Client** tools to the agent in the ElevenLabs dashboard and enable **Wait for
+response**. The browser implementations are already registered:
+
+- `get_last_session` — no parameters.
+- `get_session_context` — optional string parameter `checkpoint_id`.
+- `search_past_summaries` — required string parameter `query`; optional number
+  parameter `limit`.
+- `request_resume_workspace` — no parameters. This only reports that local
+  confirmation is required; it never opens anything itself.
+
+A concise agent instruction is: “Use the injected Continue checkpoint context
+for the current briefing. For older work, call `search_past_summaries`. Never
+invent a checkpoint, and say when no matching summary exists.” The tool searches
+the complete local SQLite history by topic or date instead of limiting retrieval
+to the newest checkpoints.
+
+## Persistent memory
+
+Checkpoint summaries are stored in `data/memory.sqlite` using WAL mode so the
+web service and capture worker can read and write safely at the same time. The
+database is local and ignored by Git. Existing `data/checkpoints.json` records
+are imported idempotently on startup; the JSON file is left untouched as a
+recoverable legacy copy. New SQLite checkpoints are not capped at 100 entries.
+
+The search index covers project, task, summary, last action, next action, key
+activities, and checkpoint dates. `search_past_summaries` also understands
+“today,” “yesterday,” “last week,” “last month,” weekday names, and ISO dates.
+Set `CONTINUE_MEMORY_PATH` to an absolute path only when a different local
+database location is needed. Run `pnpm verify:memory` for a disposable end-to-end
+check of JSON migration, durable reopening, indexed retrieval, and the exact
+ElevenLabs history interface.

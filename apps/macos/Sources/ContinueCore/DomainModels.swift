@@ -100,6 +100,7 @@ public struct Checkpoint: Codable, Equatable, Identifiable, Sendable {
     public let confidence: Confidence
     public let evidence: [EvidenceReference]
     public let resumeTargets: [ResumeTarget]
+    public let isPreview: Bool
 
     public init(
         id: String,
@@ -111,7 +112,8 @@ public struct Checkpoint: Codable, Equatable, Identifiable, Sendable {
         nextSteps: [String],
         confidence: Confidence,
         evidence: [EvidenceReference],
-        resumeTargets: [ResumeTarget]
+        resumeTargets: [ResumeTarget],
+        isPreview: Bool = true
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -123,6 +125,7 @@ public struct Checkpoint: Codable, Equatable, Identifiable, Sendable {
         self.confidence = confidence
         self.evidence = evidence
         self.resumeTargets = resumeTargets
+        self.isPreview = isPreview
     }
 
     public func replacingNextSteps(with nextSteps: [String]) -> Checkpoint {
@@ -136,7 +139,8 @@ public struct Checkpoint: Codable, Equatable, Identifiable, Sendable {
             nextSteps: nextSteps,
             confidence: confidence,
             evidence: evidence,
-            resumeTargets: resumeTargets
+            resumeTargets: resumeTargets,
+            isPreview: isPreview
         )
     }
 }

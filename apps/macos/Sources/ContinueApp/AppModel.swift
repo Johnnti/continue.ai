@@ -29,30 +29,41 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPreparingResume = false
     @Published private(set) var isResuming = false
     @Published private(set) var isUpdatingRuntime = false
+    @Published private(set) var isUpdatingCapture = false
+    @Published private(set) var captureErrorMessage: String?
+    @Published private(set) var isGeneratingSummary = false
+    @Published private(set) var summaryErrorMessage: String?
     @Published private(set) var notificationAuthorization: ReturnNotificationAuthorization = .checking
     @Published private(set) var isRequestingNotificationAuthorization = false
 
     private let runtimeProvider: any RuntimeProviding
     private let runtimeController: any RuntimeControlling
+    private let captureController: any CaptureControlling
     private let checkpointProvider: any CheckpointProviding
+    private let summaryGenerator: any SummaryGenerating
     private let voiceProvider: any VoiceProviding
     private let resumeProvider: any ResumeProviding
     private let returnNotifier: any ReturnNotifying
     private var monitoringTask: Task<Void, Never>?
+    private var voiceMonitoringTask: Task<Void, Never>?
     private var dismissedCheckpointIDs: Set<String> = []
     private var checkpointEdits: [String: Checkpoint] = [:]
 
     init(
         runtimeProvider: any RuntimeProviding,
         runtimeController: any RuntimeControlling,
+        captureController: any CaptureControlling,
         checkpointProvider: any CheckpointProviding,
+        summaryGenerator: any SummaryGenerating,
         voiceProvider: any VoiceProviding,
         resumeProvider: any ResumeProviding,
         returnNotifier: any ReturnNotifying
     ) {
         self.runtimeProvider = runtimeProvider
         self.runtimeController = runtimeController
+        self.captureController = captureController
         self.checkpointProvider = checkpointProvider
+        self.summaryGenerator = summaryGenerator
         self.voiceProvider = voiceProvider
         self.resumeProvider = resumeProvider
         self.returnNotifier = returnNotifier
@@ -73,6 +84,7 @@ final class AppModel: ObservableObject {
                 }
 
                 await self.refreshRuntime(notifyOnReturn: true)
+                await self.refreshCheckpoints()
             }
         }
     }
@@ -83,28 +95,12 @@ final class AppModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         historyErrorMessage = nil
+        summaryErrorMessage = nil
         await refreshRuntime(notifyOnReturn: false)
         voice = await voiceProvider.snapshot()
         notificationAuthorization = await returnNotifier.authorizationStatus()
 
-        do {
-            if let latest = try await checkpointProvider.latest() {
-                let resolved = checkpointEdits[latest.id] ?? latest
-                checkpoint = dismissedCheckpointIDs.contains(latest.id) ? nil : resolved
-            } else {
-                checkpoint = nil
-            }
-        } catch {
-            errorMessage = "Continue could not load the latest checkpoint."
-        }
-
-        do {
-            history = try await checkpointProvider.history(limit: 20).map {
-                checkpointEdits[$0.id] ?? $0
-            }
-        } catch {
-            historyErrorMessage = "Continue could not load checkpoint history."
-        }
+        await refreshCheckpoints()
 
         isLoading = false
     }
@@ -128,12 +124,16 @@ final class AppModel: ObservableObject {
                     .joined(separator: " ")
                 try await voiceProvider.start(briefing: conversationContext)
                 voice = await voiceProvider.snapshot()
+                beginVoiceMonitoring()
             } catch {
+                voiceMonitoringTask?.cancel()
+                voiceMonitoringTask = nil
+                let message = error.localizedDescription
                 voice = VoiceSnapshot(
-                    state: .failed(message: "Voice conversation could not start."),
+                    state: .failed(message: message),
                     levels: voice.levels
                 )
-                voiceErrorMessage = "Voice conversation could not start."
+                voiceErrorMessage = message
             }
 
             isVoiceTransitioning = false
@@ -145,6 +145,8 @@ final class AppModel: ObservableObject {
 
         Task {
             isVoiceTransitioning = true
+            voiceMonitoringTask?.cancel()
+            voiceMonitoringTask = nil
             await voiceProvider.stop()
             voice = await voiceProvider.snapshot()
             isVoiceTransitioning = false
@@ -159,6 +161,59 @@ final class AppModel: ObservableObject {
             await runtimeController.markSteppingAway()
             await refreshRuntime(notifyOnReturn: false)
             isUpdatingRuntime = false
+        }
+    }
+
+    func toggleCapture() {
+        let shouldEnable: Bool
+        switch runtime.captureStatus {
+        case .recording:
+            shouldEnable = false
+        case .paused, .unavailable:
+            shouldEnable = true
+        case .checking:
+            return
+        }
+
+        setCaptureEnabled(shouldEnable)
+    }
+
+    func setCaptureEnabled(_ isEnabled: Bool) {
+        guard !isUpdatingCapture else { return }
+
+        Task {
+            isUpdatingCapture = true
+            captureErrorMessage = nil
+
+            do {
+                try await captureController.setCaptureEnabled(isEnabled)
+            } catch {
+                captureErrorMessage = error.localizedDescription
+            }
+
+            await refreshRuntime(notifyOnReturn: false)
+            if !isEnabled {
+                await refreshCheckpoints()
+            }
+            isUpdatingCapture = false
+        }
+    }
+
+    func generateSummary() {
+        guard !isGeneratingSummary else { return }
+
+        Task {
+            isGeneratingSummary = true
+            summaryErrorMessage = nil
+
+            do {
+                try await summaryGenerator.generateSummary()
+                await refreshCheckpoints()
+            } catch {
+                summaryErrorMessage = error.localizedDescription
+            }
+
+            isGeneratingSummary = false
         }
     }
 
@@ -191,7 +246,7 @@ final class AppModel: ObservableObject {
     }
 
     func prepareResume() {
-        guard let checkpoint, !isPreparingResume else { return }
+        guard let checkpoint, checkpoint.isPreview, !isPreparingResume else { return }
 
         Task {
             isPreparingResume = true
@@ -306,5 +361,55 @@ final class AppModel: ObservableObject {
         }
 
         await returnNotifier.notifyReturnSummaryReady()
+    }
+
+    private func refreshCheckpoints() async {
+        do {
+            if let latest = try await checkpointProvider.latest() {
+                let resolved = checkpointEdits[latest.id] ?? latest
+                checkpoint = dismissedCheckpointIDs.contains(latest.id) ? nil : resolved
+            } else {
+                checkpoint = nil
+            }
+            errorMessage = nil
+        } catch {
+            checkpoint = nil
+            errorMessage = "Continue could not load the latest checkpoint: \(error.localizedDescription)"
+        }
+
+        do {
+            history = try await checkpointProvider.history(limit: 20).map {
+                checkpointEdits[$0.id] ?? $0
+            }
+            historyErrorMessage = nil
+        } catch {
+            history = []
+            historyErrorMessage = "Continue could not load checkpoint history: \(error.localizedDescription)"
+        }
+    }
+
+    private func beginVoiceMonitoring() {
+        voiceMonitoringTask?.cancel()
+        voiceMonitoringTask = Task { [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled {
+                let snapshot = await voiceProvider.snapshot()
+                voice = snapshot
+
+                switch snapshot.state {
+                case .disconnected, .failed:
+                    return
+                case .connecting, .listening, .thinking, .speaking, .muted:
+                    break
+                }
+
+                do {
+                    try await Task.sleep(for: .milliseconds(120))
+                } catch {
+                    return
+                }
+            }
+        }
     }
 }

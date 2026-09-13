@@ -39,3 +39,84 @@ button {
   padding: 8px 12px;
   cursor: pointer;
 }
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.voice-agent__header,
+.voice-agent__actions,
+.voice-agent__composer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.voice-agent__header {
+  justify-content: space-between;
+}
+
+.voice-agent h2,
+.voice-agent h3,
+.voice-agent__status {
+  margin: 0;
+}
+
+.voice-agent__indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #52525b;
+}
+
+.voice-agent__indicator--connecting {
+  background: #f59e0b;
+}
+
+.voice-agent__indicator--connected {
+  background: #22c55e;
+  box-shadow: 0 0 16px #22c55e;
+}
+
+.voice-agent__indicator--error {
+  background: #ef4444;
+}
+
+.voice-agent__actions,
+.voice-agent__composer {
+  margin-top: 16px;
+}
+
+.secondary-button {
+  background: #3f3f46;
+}
+
+.voice-agent__composer label {
+  display: block;
+  margin-bottom: 8px;
+  color: #d4d4d8;
+  font-size: 0.9rem;
+}
+
+.voice-agent__composer input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #09090b;
+  color: #f4f4f5;
+}
+
+.voice-agent__error {
+  color: #fca5a5;
+}
+
+.voice-transcript p {
+  line-height: 1.5;
+}
