@@ -75,7 +75,7 @@ open apps/macos/Package.swift
 ## Review the UI
 
 The left sidebar contains the Conversation destination, a disclosure-controlled
-Checkpoint history list, and the Screenpipe, summary, and Settings controls.
+Checkpoint history list, and the capture status, summary, and Settings controls.
 The native `NavigationSplitView` sidebar can be hidden with the standard macOS
 sidebar button. The main screen puts the live voice state and 360-point
 waveform at the center; written checkpoint evidence and explicit actions remain
@@ -132,7 +132,7 @@ flowchart TD
     Resume -. implements .-> PreviewResume
     Notify -. implements .-> SystemNotify
 
-    Capture["macOS capture helper"] --> Context["Vision model<br/>batched images + activity"]
+    Capture["Native macOS capture<br/>screen activity + metadata"] --> Context["Vision model<br/>batched images + activity"]
     Context --> Store["SQLite memory<br/>full-text checkpoint index"]
     Store --> BackendCheckpoints
     VoiceSDK["ElevenLabs Swift SDK<br/>public agent session"] --> ElevenLabsVoice
@@ -141,9 +141,9 @@ flowchart TD
 
 The boundaries enforce these rules:
 
-- Screenpipe remains the source of captured activity; Continue consumes bounded
-  observations and stores interpreted checkpoint records, not raw screenshots
-  or microphone audio.
+- The native capture system remains the source of screen activity; Continue
+  consumes bounded observations and stores interpreted checkpoint records, not
+  raw screenshots or microphone audio.
 - The runtime coordinator decides whether the user is away or returning;
   views do not infer that state independently.
 - Voice starts only after an explicit user action and exposes connecting,
@@ -200,9 +200,9 @@ response**. The browser implementations are already registered:
 - `request_resume_workspace` — no parameters. This only reports that local
   confirmation is required; it never opens anything itself.
 
-A concise agent instruction is: “Use the injected Continue checkpoint context
+A concise agent instruction is: "Use the injected Continue checkpoint context
 for the current briefing. For older work, call `search_past_summaries`. Never
-invent a checkpoint, and say when no matching summary exists.” The tool searches
+invent a checkpoint, and say when no matching summary exists." The tool searches
 the complete local SQLite history by topic or date instead of limiting retrieval
 to the newest checkpoints.
 
@@ -216,7 +216,7 @@ recoverable legacy copy. New SQLite checkpoints are not capped at 100 entries.
 
 The search index covers project, task, summary, last action, next action, key
 activities, and checkpoint dates. `search_past_summaries` also understands
-“today,” “yesterday,” “last week,” “last month,” weekday names, and ISO dates.
+"today," "yesterday," "last week," "last month," weekday names, and ISO dates.
 Set `CONTINUE_MEMORY_PATH` to an absolute path only when a different local
 database location is needed. Run `pnpm verify:memory` for a disposable end-to-end
 check of JSON migration, durable reopening, indexed retrieval, and the exact
